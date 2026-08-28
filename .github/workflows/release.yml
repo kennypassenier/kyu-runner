@@ -1,0 +1,35 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.97"
+          targets: x86_64-unknown-linux-musl
+      - uses: Swatinem/rust-cache@v2
+      - name: Build the artifact
+        run: cargo build --release --target x86_64-unknown-linux-musl
+      - name: E2E the released artifact (the shipped binary is the tested binary)
+        env:
+          MAILBOX_IMAGE: ghcr.io/kennypassenier/mailbox:1.0.0
+          BRIDGE_BIN: target/x86_64-unknown-linux-musl/release/hub-bridge
+        run: cargo test --test l2_pump
+      - name: Package with checksum manifest
+        run: |
+          cp target/x86_64-unknown-linux-musl/release/hub-bridge hub-bridge-x86_64-linux-musl
+          sha256sum hub-bridge-x86_64-linux-musl > SHA256SUMS
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            hub-bridge-x86_64-linux-musl
+            SHA256SUMS

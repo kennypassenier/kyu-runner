@@ -555,7 +555,12 @@ impl Bridge {
             .expect("write config");
         let log = tempfile::NamedTempFile::new().expect("log file");
         let (log_file, log_path) = log.keep().expect("keep log");
-        let mut command = Command::new(env!("CARGO_BIN_EXE_hub-bridge"));
+        // BRIDGE_BIN lets the release workflow run this suite against
+        // the musl artifact — the shipped binary is the tested binary
+        // (T8/M1).
+        let binary =
+            std::env::var("BRIDGE_BIN").unwrap_or_else(|_| env!("CARGO_BIN_EXE_hub-bridge").into());
+        let mut command = Command::new(binary);
         command
             .arg("--config")
             .arg(config.path())

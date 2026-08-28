@@ -26,12 +26,12 @@ when the binary's shape is settled.
 
 | Milestone | Status |
 |---|---|
-| L0 | pending |
-| L1 | pending |
-| L2 | pending |
-| L3 | pending |
-| L4 | pending |
-| L5 | pending |
+| L0 | done 2026-08-29 — skeleton, enforcement live (git-native hooks + CI + toolchain pin), gates green |
+| L1 | done 2026-08-29 — config domain; 16 unit tests + 5 binary tests, every rejection carries a remedy |
+| L2 | done 2026-08-29 — the pump; 8 E2E scenarios against the real hub binary (S1-S4 + AR15/AR16/AR17 + token hygiene) |
+| L3 | done 2026-08-29 — hub stop/start drill (one transition line, auto-recovery) + SIGTERM mid-delivery exits zero |
+| L4 | done 2026-08-29 — mailbox.events route (sweeper event E2E), W3 policy PUT with values-in-force log, /healthz |
+| L5 | done 2026-08-29 — static musl artifact, systemd unit, release workflow (E2Es the shipped artifact), runbook; restore-from-zero drill DRILL-OK on scratch (dead letter → warning webhook via the musl binary, acked, clean stop) |
 
 ## Gate log (from Phase 7 onward; standing rule 5)
 

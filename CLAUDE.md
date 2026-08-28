@@ -17,7 +17,7 @@ gates hold from any session or terminal. After a fresh clone, run:
 
 | Field | Value |
 |---|---|
-| Current phase | AFK build (phases 1-6 on recommended defaults) |
+| Current phase | 7 · Hardening (AFK; L0-L5 built and green) |
 | Last completed gate | Phase 0 (2026-08-28): scope approved item-by-item, B1 out of scope |
 | Next gate | Combined ratification round — see docs/PENDING_MINI_ROUNDS.md |
 | AFK mode | **on** (Kenny, 2026-08-28: "doe alles wat je kan zonder mijn input") |

@@ -1,0 +1,29 @@
+# hub-bridge systemd unit (K10) — the second service on LXC 109, next
+# to the hub, following the same native-binary pattern. The copy in git
+# is the source of truth (M3); deploy to /etc/systemd/system/.
+
+[Unit]
+Description=hub-bridge - mailbox to Home Assistant webhook pump
+# After, not Requires: the hub must be restartable on its own, and the
+# bridge reconnects by itself (K7). The ordering only makes a cold boot
+# start the hub first so the W3 policy PUTs land on the first try.
+After=network-online.target mailbox.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStartPre=/usr/local/bin/hub-bridge --config /etc/hub-bridge/config.toml --check-config
+ExecStart=/usr/local/bin/hub-bridge --config /etc/hub-bridge/config.toml
+# AR7: the app token, and nothing else, lives here (root-owned, 0600).
+EnvironmentFile=-/etc/hub-bridge/token.env
+# The bridge is stateless (K5): no state directory, no disk to protect.
+DynamicUser=yes
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
