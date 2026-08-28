@@ -17,6 +17,16 @@ pub const DEFAULT_CONFIG_PATH: &str = "/etc/hub-bridge/config.toml";
 /// hub's answer authoritative instead of silently clamped.
 const MAX_POLL_WAIT_MS: u64 = 300_000;
 
+/// The hub's default lease when a route sets no policy of its own
+/// (mailbox `DEFAULT_LEASE_MS`). If mailbox ever changes this default,
+/// routes without an explicit `policy.lease_ms` get a wrong budget —
+/// which is why the K8 remedy pushes toward setting one.
+const HUB_DEFAULT_LEASE_MS: u64 = 30_000;
+
+/// Time reserved inside the lease for settling (ack/nack) after the
+/// last delivery attempt (AR5).
+const SETTLE_MARGIN_MS: u64 = 5_000;
+
 #[derive(Debug, Error)]
 pub enum ConfigError {
     #[error(
@@ -67,6 +77,26 @@ pub enum ConfigError {
     )]
     WebhookTimeout { scope: String, value: u64 },
 
+    #[error(
+        "route {name:?}: webhook_timeout_ms {timeout} + {margin} ms settle margin does not fit \
+         the lease budget of {budget} ms (70% of the {lease} ms lease). Remedy: lower the \
+         timeout, or raise the lease by setting policy.lease_ms on this route (W3) — the \
+         delivery must always be settled by its owner, never by lease expiry (AR5)."
+    )]
+    LeaseBudget {
+        name: String,
+        timeout: u64,
+        margin: u64,
+        budget: u64,
+        lease: u64,
+    },
+
+    #[error(
+        "route {name:?}: policy.lease_ms is {value:?}, not a positive integer. Remedy: give the \
+         lease in milliseconds, e.g. lease_ms = 300000 for five minutes."
+    )]
+    PolicyLease { name: String, value: String },
+
     #[error("route {name:?}: {problem} Remedy: {remedy}")]
     Route {
         name: String,
@@ -93,8 +123,6 @@ pub struct Config {
 pub struct Defaults {
     pub poll_wait_ms: u64,
     pub webhook_timeout_ms: u64,
-    /// AR9: how long an in-flight delivery may finish after SIGTERM.
-    pub shutdown_grace_ms: u64,
 }
 
 impl Default for Defaults {
@@ -102,7 +130,6 @@ impl Default for Defaults {
         Self {
             poll_wait_ms: 25_000,
             webhook_timeout_ms: 10_000,
-            shutdown_grace_ms: 10_000,
         }
     }
 }
@@ -138,8 +165,57 @@ impl Config {
         Duration::from_millis(self.defaults.poll_wait_ms)
     }
 
+    /// AR9: derived, not configured — the longest webhook timeout plus
+    /// the settle margin, so an in-flight delivery always fits.
     pub fn shutdown_grace(&self) -> Duration {
-        Duration::from_millis(self.defaults.shutdown_grace_ms)
+        let max_timeout = self
+            .routes
+            .iter()
+            .map(|route| self.webhook_timeout(route).as_millis() as u64)
+            .max()
+            .unwrap_or(self.defaults.webhook_timeout_ms);
+        Duration::from_millis(max_timeout + SETTLE_MARGIN_MS)
+    }
+
+    /// The lease this route effectively runs under: its own
+    /// `policy.lease_ms` if set, else the hub default.
+    pub fn effective_lease_ms(route: &Route) -> u64 {
+        route
+            .policy
+            .as_ref()
+            .and_then(|policy| policy.get("lease_ms"))
+            .and_then(|value| value.as_integer())
+            .filter(|value| *value > 0)
+            .map(|value| value as u64)
+            .unwrap_or(HUB_DEFAULT_LEASE_MS)
+    }
+
+    /// AR5: in-process retries stop at 70% of the effective lease, so
+    /// the claim is always settled by its owner, never by expiry.
+    pub fn lease_budget(&self, route: &Route) -> Duration {
+        Duration::from_millis(Self::effective_lease_ms(route) * 7 / 10)
+    }
+
+    /// W3: the policy block as the JSON document the hub expects. The
+    /// bridge does not know the hub's field names on purpose (the hub
+    /// validates and refuses with a remedy); it only guarantees the
+    /// value types survive the TOML→JSON trip, which K8 validation
+    /// restricts to integers, strings and booleans.
+    pub fn policy_json(route: &Route) -> Option<String> {
+        let table = route.policy.as_ref()?;
+        let fields: Vec<String> = table
+            .iter()
+            .map(|(key, value)| {
+                let rendered = match value {
+                    toml::Value::Integer(number) => number.to_string(),
+                    toml::Value::Boolean(flag) => flag.to_string(),
+                    toml::Value::String(text) => format!("{text:?}"),
+                    other => other.to_string(),
+                };
+                format!("{key:?}:{rendered}")
+            })
+            .collect();
+        Some(format!("{{{}}}", fields.join(",")))
     }
 
     fn validate(&mut self) -> Result<(), ConfigError> {
@@ -184,6 +260,48 @@ impl Config {
                 return Err(ConfigError::WebhookTimeout {
                     scope: format!("route {:?}", route.name),
                     value,
+                });
+            }
+            if let Some(policy) = &route.policy {
+                for (key, value) in policy {
+                    if !matches!(
+                        value,
+                        toml::Value::Integer(_) | toml::Value::Boolean(_) | toml::Value::String(_)
+                    ) {
+                        return Err(ConfigError::Route {
+                            name: route.name.clone(),
+                            problem: format!(
+                                "policy.{key} is {value}, which is not an integer, string or \
+                                 boolean."
+                            ),
+                            remedy: "policy blocks are flat hub fields, e.g. lease_ms = 300000, \
+                                     max_attempts = 25 — see the hub's policy endpoint for what \
+                                     it accepts."
+                                .into(),
+                        });
+                    }
+                }
+            }
+            if let Some(lease) = route.policy.as_ref().and_then(|p| p.get("lease_ms"))
+                && !lease.as_integer().is_some_and(|value| value > 0)
+            {
+                return Err(ConfigError::PolicyLease {
+                    name: route.name.clone(),
+                    value: lease.to_string(),
+                });
+            }
+            let timeout = route
+                .webhook_timeout_ms
+                .unwrap_or(self.defaults.webhook_timeout_ms);
+            let lease = Self::effective_lease_ms(route);
+            let budget = lease * 7 / 10;
+            if timeout + SETTLE_MARGIN_MS > budget {
+                return Err(ConfigError::LeaseBudget {
+                    name: route.name.clone(),
+                    timeout,
+                    margin: SETTLE_MARGIN_MS,
+                    budget,
+                    lease,
                 });
             }
             if !names.insert(route.name.clone()) {
@@ -403,6 +521,49 @@ mod tests {
         );
         let message = remedy_of(parse(&text).expect_err("bad listen addr"));
         assert!(message.contains("host:port"), "{message}");
+    }
+
+    #[test]
+    fn l1_ar5_a_webhook_timeout_that_outgrows_the_lease_budget_is_refused() {
+        let text = VALID.replace(
+            "webhook_url =",
+            "webhook_timeout_ms = 17000\n        webhook_url =",
+        );
+        let message = remedy_of(parse(&text).expect_err("17s + 5s > 21s budget"));
+        assert!(message.contains("policy.lease_ms"), "{message}");
+    }
+
+    #[test]
+    fn l1_ar5_a_raised_policy_lease_widens_the_budget() {
+        let text = VALID.replace(
+            "webhook_url =",
+            "webhook_timeout_ms = 17000\n        policy = { lease_ms = 60000 }\n        webhook_url =",
+        );
+        let config = parse(&text).expect("60s lease gives a 42s budget");
+        assert_eq!(
+            config.lease_budget(&config.routes[0]),
+            Duration::from_millis(42_000)
+        );
+    }
+
+    #[test]
+    fn l1_ar5_a_non_integer_policy_lease_is_refused() {
+        let text = VALID.replace(
+            "webhook_url =",
+            "policy = { lease_ms = \"long\" }\n        webhook_url =",
+        );
+        remedy_of(parse(&text).expect_err("string lease must be refused"));
+    }
+
+    #[test]
+    fn l1_ar9_the_shutdown_grace_is_derived_from_the_largest_timeout() {
+        let text = format!(
+            "{VALID}\n[[routes]]\nname = \"slow\"\ntopic = \"t2\"\nsubscription = \"s2\"\n\
+             webhook_timeout_ms = 12000\npolicy = {{ lease_ms = 30000 }}\n\
+             webhook_url = \"http://ha.lan:8123/api/webhook/slow\"\n"
+        );
+        let config = parse(&text).expect("valid config");
+        assert_eq!(config.shutdown_grace(), Duration::from_millis(17_000));
     }
 
     #[test]

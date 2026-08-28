@@ -22,4 +22,5 @@ tracing = "0.1"                                                 # structured eve
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }  # T5; json for Loki
 
 [dev-dependencies]
+reqwest = { version = "0.12", default-features = false }        # test-side HTTP against the real hub (SR9)
 tempfile = "3"                                                  # scratch-hub data dirs in E2E (SR9)

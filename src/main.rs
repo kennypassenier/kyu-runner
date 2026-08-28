@@ -7,8 +7,13 @@
 
 use std::path::PathBuf;
 use std::process::ExitCode;
+use std::sync::Arc;
 
 use hub_bridge::config;
+use hub_bridge::hub::HubClient;
+use hub_bridge::route::RouteRunner;
+use hub_bridge::webhook::WebhookClient;
+use tokio::sync::watch;
 
 const USAGE: &str = "\
 hub-bridge — stateless pump from the mailbox hub to Home Assistant webhooks
@@ -90,9 +95,100 @@ fn main() -> ExitCode {
         return ExitCode::SUCCESS;
     }
 
-    // Loud, not silent (standing rule 12): the pump arrives with L2.
-    eprintln!(
-        "hub-bridge: run mode is not built yet (milestone L2); only --check-config works today."
+    init_tracing();
+    // AR7: the token comes from the environment (systemd
+    // EnvironmentFile), never from the config file that lives in git.
+    let token = std::env::var("HUB_BRIDGE_TOKEN")
+        .ok()
+        .filter(|token| !token.is_empty());
+
+    let runtime = match tokio::runtime::Runtime::new() {
+        Ok(runtime) => runtime,
+        Err(error) => {
+            eprintln!(
+                "hub-bridge: cannot start the runtime: {error}. Remedy: this is an OS-level failure (threads/fds); check the machine."
+            );
+            return ExitCode::FAILURE;
+        }
+    };
+    match runtime.block_on(run(config, token)) {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(error) => {
+            eprintln!("hub-bridge: {error:#}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+fn init_tracing() {
+    use tracing_subscriber::EnvFilter;
+    let filter =
+        EnvFilter::try_from_env("HUB_BRIDGE_LOG").unwrap_or_else(|_| EnvFilter::new("info"));
+    let builder = tracing_subscriber::fmt()
+        .with_env_filter(filter)
+        .with_writer(std::io::stderr);
+    if std::env::var("HUB_BRIDGE_LOG_FORMAT").is_ok_and(|value| value == "json") {
+        builder.json().init();
+    } else {
+        builder.init();
+    }
+}
+
+async fn run(config: config::Config, token: Option<String>) -> anyhow::Result<()> {
+    use anyhow::Context;
+
+    let hub = Arc::new(
+        HubClient::new(&config.hub_url, token, config.poll_wait())
+            .context("cannot build the hub client")?,
     );
-    ExitCode::FAILURE
+    let webhook = Arc::new(WebhookClient::new().context("cannot build the webhook client")?);
+
+    let (stop_tx, stop_rx) = watch::channel(false);
+    let mut tasks = Vec::new();
+    for route in &config.routes {
+        let runner = RouteRunner {
+            route: route.clone(),
+            hub: Arc::clone(&hub),
+            webhook: Arc::clone(&webhook),
+            webhook_timeout: config.webhook_timeout(route),
+            lease_budget: config.lease_budget(route),
+        };
+        tasks.push(tokio::spawn(runner.run(stop_rx.clone())));
+    }
+    tracing::info!(
+        version = env!("CARGO_PKG_VERSION"),
+        hub = %config.hub_url,
+        routes = config.routes.len(),
+        "hub-bridge started"
+    );
+
+    wait_for_signal().await;
+    tracing::info!("shutdown signal — letting in-flight deliveries finish (AR9/W1)");
+    let _ = stop_tx.send(true);
+    tokio::spawn(async {
+        wait_for_signal().await;
+        tracing::warn!("second signal — exiting immediately; unacked messages redeliver (K5)");
+        std::process::exit(130);
+    });
+
+    let deadline = std::time::Instant::now() + config.shutdown_grace();
+    for task in tasks {
+        let mut task = task;
+        let remaining = deadline.saturating_duration_since(std::time::Instant::now());
+        if tokio::time::timeout(remaining, &mut task).await.is_err() {
+            task.abort();
+        }
+    }
+    tracing::info!("hub-bridge stopped");
+    Ok(())
+}
+
+async fn wait_for_signal() {
+    use tokio::signal::unix::{SignalKind, signal};
+    let mut term = signal(SignalKind::terminate()).expect("SIGTERM handler");
+    let mut int = signal(SignalKind::interrupt()).expect("SIGINT handler");
+    tokio::select! {
+        _ = term.recv() => {}
+        _ = int.recv() => {}
+    }
 }

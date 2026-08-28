@@ -18,7 +18,7 @@ test names, docs and forms forever.
 | K3 | Essential | **Ack only on 2xx.** The hub ack happens only after the webhook answered 2xx. "Delivered" means processed by HA, not sent. |
 | K4 | Essential | **Nack on failure.** Non-2xx, timeout or connect error → nack *without* `dead=true`, so the hub's backoff/retry runs and exhausted attempts dead-letter visibly. The bridge never poison-pills: payload-agnostic code cannot judge a payload (scope NG2). |
 | K5 | Essential | **Stateless.** No disk state, no cursors, no dedup store. `kill -9` at any moment loses nothing; a restart resumes from the hub's cursors (scope NG1/S3). |
-| K6 | Essential | **`mailbox.events` default route (P8).** Shipped example config routes the hub's own events to an HA warning webhook; the HA-side automation (warning notification with `click_url` to the hub dashboard) is a documented deliverable. |
+| K6 | Essential | **`mailbox.events` default route (P8).** Shipped example config routes the hub's own events to an HA warning webhook; the HA-side automation (warning notification with `click_url` to the hub dashboard) is a documented deliverable. ⚔ Critic: HA answers 200 even for unknown webhook ids (anti-enumeration), so a typo'd `webhook_url` acks messages into the void with healthy metrics — dead letters catch transport failure, never misrouting. Therefore the runbook orders "HA automation first, then route", closing with a per-route test-publish smoke check, and mandates `local_only: true` on every HA webhook trigger. |
 | K7 | Essential | **Hub-down resilience.** Hub unreachable → keep running, reconnect with capped backoff, log state *transitions* (down/up) rather than every attempt, resume where it was (scope S5). |
 | K8 | Essential | **Config validation, fail-closed.** Startup refuses an invalid config with a remedy in the message (standing rule 11); unknown keys are refused (no silent typo-tolerance); duplicate `{topic, subscription}` pairs and duplicate route names are errors. |
 | K9 | Essential | **Hub token.** Bearer token read from the environment (systemd `EnvironmentFile`), sent on every hub request. Never logged, never in git (standing rule 10, asserted by test). A tokenless hub (dev/scratch) works without it. |
@@ -31,9 +31,9 @@ test names, docs and forms forever.
 |---|---|---|
 | W1 | Essential | **Graceful shutdown.** SIGTERM/SIGINT → stop claiming new messages, let the in-flight delivery finish within a bounded grace period, then exit. An interrupted delivery is safe anyway (K5); this just avoids a gratuitous duplicate on every deploy. |
 | W2 | Desired | **`--check-config`.** Parse + validate the config and exit; wired as `ExecStartPre=` in the unit and used in the runbook before restarts. |
-| W3 | Desired | **Declarative route policy.** Optional `[routes.policy]` block (lease_ms, max_attempts, ttl_ms, idle thresholds) that the bridge PUTs to the hub per subscription at startup — config in git as the source of truth for the study's "TTS-ish routes get short TTL, ops routes long". Note: the hub's policy write replaces every field (mailbox K7), so the bridge always sends the complete block. |
+| W3 | Essential | **Declarative route policy.** Optional `[routes.policy]` block (lease_ms, max_attempts, ttl_ms, …) that the bridge PUTs to the hub per subscription — config in git as the source of truth for the study's "TTS-ish routes get short TTL, ops routes long". ⚔ Promoted Desired → Essential by the critic pass: AR15's long-outage story leans on raising `max_attempts`, and AR5's lease budget leans on `lease_ms`. Order matters (the PUT fails on a subscription that does not exist yet): first successful poll creates the subscription, then PUT with retry until in force, logging the hub's "values in force" answer per route. The hub's write replaces every field (mailbox K7): a bridge restart reverts dashboard tweaks — documented loudly in the runbook. |
 | W4 | Desired | **Bridge `/healthz`.** Minimal HTTP listener reporting the route loops' liveness, for Uptime Kuma. The hub-side idle-subscription flag (mailbox K11) already catches a dead bridge; this is the direct probe. |
-| W5 | Later | **`from=beginning` per route.** Opt-in backlog pull when a brand-new subscription should start from retained history instead of from now. |
+| W5 | — | **Superseded by AR16** (critic pass): topic-birth replay is built-in behaviour, not a config knob — after a 404 the next successful poll carries `from=beginning`, so a brand-new topic's first messages are never lost. Pre-existing topics start from now; manual replay is a runbook procedure. |
 | W6 | Later | **Bridge `/metrics`.** Prometheus counters (delivered, nacked, per route). The hub's metrics already expose queue state; revisit when Grafana wants bridge-side series. |
 | W7 | Don't do | **Reverse direction (HA → hub via the bridge).** Decided at the Phase 0 gate (B1): HA produces via `rest_command` directly to the hub. |
 
@@ -56,6 +56,10 @@ test names, docs and forms forever.
 | K8 | Unit tests per validation rule, each asserting the remedy text is present. |
 | K9 | Plaintext-scan assertion: the token appears in no log line and no error message (standing rule 10). |
 | W1 | E2E: SIGTERM mid-delivery → in-flight completes, ack recorded, clean exit. |
+| AR15 | E2E: webhook target down (connection refused) while messages publish → attempts do not burn (circuit open, unclaimed backlog); on target return, drain completes in publish order. |
+| AR16 | E2E: route configured before its topic exists → 404 quiet-wait; first publish births the topic; the pre-subscription message is delivered anyway (birth replay). |
+| AR17 | E2E: webhook answers 302 → treated as failure, no ack, no redirect followed. |
+| AR5 | Unit (K8): `webhook_timeout_ms` too large for the effective lease is refused with a remedy naming W3. |
 | W2 | E2E: invalid config → non-zero exit + remedy; valid → zero exit, no network calls. |
 | W3 | E2E: after startup the hub's policy endpoint reports the configured values. |
 | W4 | E2E: `/healthz` answers 200 while routes run. |
