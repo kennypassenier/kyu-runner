@@ -16,7 +16,7 @@ anyhow = "1"                                                    # error context 
 reqwest = { version = "0.12", default-features = false }        # HTTP client, no TLS: LAN plain HTTP only (T3, AR11)
 serde = { version = "1", features = ["derive"] }                # config deserialization (T4)
 thiserror = "2"                                                 # typed config errors with remedies (T6, K8)
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "time", "net"] }  # runtime (T2)
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "time", "net", "io-util"] }  # runtime (T2); io-util for the W4 health socket
 toml = "0.9"                                                    # config format (T4)
 tracing = "0.1"                                                 # structured events (T5)
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }  # T5; json for Loki

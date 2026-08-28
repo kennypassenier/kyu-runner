@@ -310,6 +310,50 @@ pub async fn put_policy(hub: &Hub, topic: &str, subscription: &str, policy: &str
     );
 }
 
+/// The poison pill (mailbox W5): straight to the dead-letter list —
+/// the quickest way to make the hub emit a `message.dead_lettered`
+/// event for the K6 test.
+pub async fn nack_dead(hub: &Hub, topic: &str, subscription: &str, id: &str) {
+    let response = reqwest::Client::new()
+        .post(format!(
+            "{}/t/{topic}/nack/{id}?as={subscription}&dead=true",
+            hub.base()
+        ))
+        .send()
+        .await
+        .expect("nack dead");
+    assert!(response.status().is_success(), "poison-pill nack failed");
+}
+
+pub async fn get_policy(hub: &Hub, topic: &str, subscription: &str) -> String {
+    reqwest::Client::new()
+        .get(format!(
+            "{}/api/t/{topic}/subs/{subscription}/policy",
+            hub.base()
+        ))
+        .send()
+        .await
+        .expect("get policy")
+        .text()
+        .await
+        .expect("policy body")
+}
+
+/// True once the subscription exists on the hub (its policy endpoint
+/// answers 200) — the deterministic "has the bridge polled yet?" probe
+/// for topics that already exist at hub start (e.g. mailbox.events).
+pub async fn subscription_exists(hub: &Hub, topic: &str, subscription: &str) -> bool {
+    reqwest::Client::new()
+        .get(format!(
+            "{}/api/t/{topic}/subs/{subscription}/policy",
+            hub.base()
+        ))
+        .send()
+        .await
+        .map(|response| response.status().is_success())
+        .unwrap_or(false)
+}
+
 pub async fn dead_letters(hub: &Hub, topic: &str, subscription: &str) -> String {
     reqwest::Client::new()
         .get(format!(

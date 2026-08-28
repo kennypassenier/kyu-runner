@@ -197,17 +197,16 @@ async fn l2_s4_k4_a_permanently_failing_webhook_dead_letters_visibly() {
         .await
         .expect("setup");
     ack(&hub, topic, "ha-bridge", &setup_id).await;
-    put_policy(
-        &hub,
-        topic,
-        "ha-bridge",
-        r#"{"lease_ms":12000,"max_attempts":2,"backoff_ms":200}"#,
-    )
-    .await;
 
+    // The whole policy lives in the bridge config: W3's PUT replaces
+    // every field, so a test-side PUT would be silently reverted the
+    // moment the bridge applies its own block (the critic's warning,
+    // demonstrated on ourselves before this line existed).
     let config = route_config(&hub, "poison", topic, &ha.url("/api/webhook/x")).replace(
         "webhook_url =",
-        "webhook_timeout_ms = 1000\npolicy = { lease_ms = 12000 }\nwebhook_url =",
+        "webhook_timeout_ms = 1000\n\
+         policy = { lease_ms = 12000, max_attempts = 2, backoff_ms = 200 }\n\
+         webhook_url =",
     );
     let bridge = Bridge::start(&config);
     publish(&hub, topic, "text/plain", "the-poison-payload").await;

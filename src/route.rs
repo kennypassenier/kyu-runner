@@ -10,6 +10,7 @@ use tokio::sync::watch;
 use tracing::{debug, info, warn};
 
 use crate::config::Route;
+use crate::health::HealthState;
 use crate::hub::{Claimed, HubClient, HubError, PollOutcome};
 use crate::webhook::{self, DeliveryError, WebhookClient};
 
@@ -19,6 +20,11 @@ pub struct RouteRunner {
     pub webhook: Arc<WebhookClient>,
     pub webhook_timeout: Duration,
     pub lease_budget: Duration,
+    /// W3: the `[routes.policy]` block as hub JSON, applied after the
+    /// first successful poll (a policy PUT on a subscription that does
+    /// not exist yet fails — the poll is what creates it).
+    pub policy_json: Option<String>,
+    pub health: Arc<HealthState>,
 }
 
 enum DeliverEnd {
@@ -86,6 +92,8 @@ impl RouteRunner {
         let mut auth_denied = false;
         let mut hub_backoff = Backoff::new(500, 30_000);
         let mut circuit_backoff = Backoff::new(1_000, 60_000);
+        let mut policy_pending = self.policy_json.is_some();
+        let mut policy_warned = false;
 
         'route: loop {
             if *shutdown.borrow() {
@@ -104,6 +112,7 @@ impl RouteRunner {
                         warn!(route = %name, "{}", HubError::Auth);
                         auth_denied = true;
                     }
+                    self.health.set(&name, "auth-denied");
                     if interrupted(hub_backoff.next(), &mut shutdown).await {
                         break;
                     }
@@ -117,12 +126,14 @@ impl RouteRunner {
                         );
                         hub_down = true;
                     }
+                    self.health.set(&name, "hub-down");
                     if interrupted(hub_backoff.next(), &mut shutdown).await {
                         break;
                     }
                 }
                 Ok(PollOutcome::TopicUnborn) => {
                     self.note_recovery(&name, &mut hub_down, &mut auth_denied, &mut hub_backoff);
+                    self.health.set(&name, "topic-unborn");
                     if !unborn_logged {
                         info!(
                             route = %name, topic = %topic,
@@ -141,16 +152,25 @@ impl RouteRunner {
                     self.note_recovery(&name, &mut hub_down, &mut auth_denied, &mut hub_backoff);
                     replay = false;
                     unborn_logged = false;
+                    self.apply_policy(&name, &mut policy_pending, &mut policy_warned)
+                        .await;
+                    self.health.set(&name, "idle");
                 }
                 Ok(PollOutcome::Message(message)) => {
                     self.note_recovery(&name, &mut hub_down, &mut auth_denied, &mut hub_backoff);
                     replay = false;
                     unborn_logged = false;
+                    self.apply_policy(&name, &mut policy_pending, &mut policy_warned)
+                        .await;
+                    self.health.set(&name, "delivering");
                     match self
                         .deliver_with_budget(&name, &message, &mut shutdown)
                         .await
                     {
-                        DeliverEnd::Delivered => self.settle_ack(&name, &message).await,
+                        DeliverEnd::Delivered => {
+                            self.settle_ack(&name, &message).await;
+                            self.health.set(&name, "idle");
+                        }
                         DeliverEnd::Shutdown => {
                             self.settle_nack(&name, &message).await;
                             break;
@@ -167,6 +187,7 @@ impl RouteRunner {
                                     "webhook target unreachable — circuit open: claiming is \
                                      paused, the backlog accumulates unclaimed on the hub (AR15)"
                                 );
+                                self.health.set(&name, "circuit-open");
                                 circuit_backoff.reset();
                                 loop {
                                     if interrupted(circuit_backoff.next(), &mut shutdown).await {
@@ -187,7 +208,52 @@ impl RouteRunner {
                 }
             }
         }
+        self.health.set(&name, "stopped");
         debug!(route = %name, "route loop stopped");
+    }
+
+    /// W3: the poll that just succeeded proved the subscription exists,
+    /// so the PUT can land now. Failures retry on later iterations —
+    /// warn once, then quiet (AR6). The very first claim of a fresh
+    /// subscription still runs under the hub-default lease; a budget
+    /// computed from a larger configured lease can then outlive that
+    /// one claim under sustained failure, which at worst costs one
+    /// legal duplicate (at-least-once).
+    async fn apply_policy(&self, name: &str, pending: &mut bool, warned: &mut bool) {
+        if !*pending {
+            return;
+        }
+        let Some(policy_json) = &self.policy_json else {
+            *pending = false;
+            return;
+        };
+        match self
+            .hub
+            .put_policy(&self.route.topic, &self.route.subscription, policy_json)
+            .await
+        {
+            Ok(in_force) => {
+                info!(
+                    route = %name,
+                    in_force = %in_force.trim(),
+                    "policy in force (W3) — the hub's answer is authoritative; note that a \
+                     policy write replaces every field, so dashboard tweaks are reverted here"
+                );
+                *pending = false;
+            }
+            Err(error) => {
+                if !*warned {
+                    warn!(
+                        route = %name, %error,
+                        "policy PUT failed — retrying on later polls; until it lands the hub's \
+                         current policy governs this subscription (W3)"
+                    );
+                    *warned = true;
+                } else {
+                    debug!(route = %name, %error, "policy PUT still failing");
+                }
+            }
+        }
     }
 
     fn note_recovery(

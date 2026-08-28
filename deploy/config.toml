@@ -1,0 +1,35 @@
+# hub-bridge configuration. The copy in git is the source of truth
+# (M3: state-in-git); the deployed file at /etc/hub-bridge/config.toml
+# is just a copy — check drift with:
+#   diff deploy/config.toml /etc/hub-bridge/config.toml
+#
+# The app token is NOT here: it lives in /etc/hub-bridge/token.env
+# (HUB_BRIDGE_TOKEN=…), root-owned 0600, loaded by the systemd unit.
+# This file is committed; a token in it would be a token in git.
+
+# The hub runs on the same LXC, so localhost — never a name that needs
+# mDNS: the release binary is static musl and cannot resolve .local.
+hub_url = "http://127.0.0.1:8080"
+
+# W4: uncomment to give Uptime Kuma a direct probe on the bridge.
+# healthz_listen = "0.0.0.0:8081"
+
+# ── K6/P8 · the hub watches itself, the house sees it ──────────────────
+# The hub's own events (message.dead_lettered, subscription.archived,
+# …) become HA warnings. ORDER MATTERS: create the HA automation for
+# this webhook FIRST, then deploy this route, then run the smoke test
+# (operations runbook) — HA answers 200 even for unknown webhook ids,
+# so a route enabled before its automation acks warnings into the void.
+# Every HA webhook trigger for the bridge sets local_only: true.
+[[routes]]
+name = "mailbox-events"
+topic = "mailbox.events"
+subscription = "ha-bridge"
+webhook_url = "http://homeassistant.lan:8123/api/webhook/hub_mailbox_events"
+
+# AR15: ops routes must survive long partial outages — while HA's HTTP
+# stack answers errors (not down, not up), each message burns roughly
+# one attempt per lease budget, so give them room. A policy write
+# replaces every field: what stands here is the whole policy.
+[routes.policy]
+max_attempts = 25

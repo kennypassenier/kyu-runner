@@ -2,6 +2,7 @@
 //! over these modules so integration tests can reach the same code.
 
 pub mod config;
+pub mod health;
 pub mod hub;
 pub mod route;
 pub mod webhook;

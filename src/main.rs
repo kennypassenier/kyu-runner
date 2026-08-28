@@ -10,6 +10,7 @@ use std::process::ExitCode;
 use std::sync::Arc;
 
 use hub_bridge::config;
+use hub_bridge::health::{self, HealthState};
 use hub_bridge::hub::HubClient;
 use hub_bridge::route::RouteRunner;
 use hub_bridge::webhook::WebhookClient;
@@ -143,6 +144,24 @@ async fn run(config: config::Config, token: Option<String>) -> anyhow::Result<()
     );
     let webhook = Arc::new(WebhookClient::new().context("cannot build the webhook client")?);
 
+    let health = Arc::new(HealthState::new(
+        config.routes.iter().map(|route| route.name.clone()),
+    ));
+    if let Some(listen) = &config.healthz_listen {
+        // Fail-closed (AR10): a health endpoint that silently failed to
+        // bind would report exactly nothing, which is the failure mode
+        // W4 exists to prevent.
+        let listener = tokio::net::TcpListener::bind(listen)
+            .await
+            .with_context(|| {
+                format!(
+                    "cannot open the health endpoint on {listen}. Remedy: free the port or change \
+                 healthz_listen in the config"
+                )
+            })?;
+        tokio::spawn(health::serve(listener, Arc::clone(&health)));
+    }
+
     let (stop_tx, stop_rx) = watch::channel(false);
     let mut tasks = Vec::new();
     for route in &config.routes {
@@ -152,6 +171,8 @@ async fn run(config: config::Config, token: Option<String>) -> anyhow::Result<()
             webhook: Arc::clone(&webhook),
             webhook_timeout: config.webhook_timeout(route),
             lease_budget: config.lease_budget(route),
+            policy_json: config::Config::policy_json(route),
+            health: Arc::clone(&health),
         };
         tasks.push(tokio::spawn(runner.run(stop_rx.clone())));
     }
