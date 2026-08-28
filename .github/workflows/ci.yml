@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  gates:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # rust-toolchain.toml pins the actual version (standing rule 7);
+      # the action just makes sure rustup + components are present.
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.97"
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: Format check
+        run: cargo fmt --all -- --check
+      - name: Lint (warnings are errors)
+        run: cargo clippy --all-targets -- -D warnings
+      - name: Full test suite (E2E hub from the public image)
+        env:
+          MAILBOX_IMAGE: ghcr.io/kennypassenier/mailbox:1.0.0
+        run: cargo test --all
+
+  deny:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: EmbarkStudios/cargo-deny-action@v2

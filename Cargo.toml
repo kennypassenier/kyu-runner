@@ -1,0 +1,25 @@
+[package]
+name = "hub-bridge"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.97"
+license = "MIT OR Apache-2.0"
+description = "Stateless pump from the mailbox hub to Home Assistant webhooks"
+repository = "https://github.com/kennypassenier/hub-bridge"
+publish = false
+
+# Dependency policy T7 ("reluctant, policed"): each direct dependency is
+# justified here, and cargo-deny checks advisories, licenses and
+# duplicates in CI.
+[dependencies]
+anyhow = "1"                                                    # error context at the binary edge (T6)
+reqwest = { version = "0.12", default-features = false }        # HTTP client, no TLS: LAN plain HTTP only (T3, AR11)
+serde = { version = "1", features = ["derive"] }                # config deserialization (T4)
+thiserror = "2"                                                 # typed config errors with remedies (T6, K8)
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "time", "net"] }  # runtime (T2)
+toml = "0.9"                                                    # config format (T4)
+tracing = "0.1"                                                 # structured events (T5)
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }  # T5; json for Loki
+
+[dev-dependencies]
+tempfile = "3"                                                  # scratch-hub data dirs in E2E (SR9)

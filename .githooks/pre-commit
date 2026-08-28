@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Git-native gate layer (Phase 5): blocks any commit whose gates fail,
+# from any session, tool or terminal. Wire once per clone with:
+#   git config core.hooksPath .githooks
+exec "$(git rev-parse --show-toplevel)/.claude/hooks/gates.sh"
