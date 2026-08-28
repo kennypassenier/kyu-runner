@@ -34,7 +34,7 @@ async fn l2_k1_k2_k3_ar16_the_pump_delivers_byte_for_byte_and_acks() {
     let hit = ha.hits()[0].clone();
     assert_eq!(hit.method, "POST");
     assert_eq!(hit.path, "/api/webhook/x");
-    assert_eq!(hit.body, payload, "byte-for-byte (K2/NG2)");
+    assert_eq!(hit.body_str(), payload, "byte-for-byte (K2/NG2)");
     assert_eq!(hit.content_type.as_deref(), Some("application/json"));
     let names: Vec<&str> = hit.headers.iter().map(|(name, _)| name.as_str()).collect();
     assert!(names.contains(&"mailbox-id"), "metadata passes through");
@@ -84,7 +84,13 @@ async fn l2_s1_a_500_from_ha_is_not_acked_and_the_message_returns() {
     })
     .await;
     let last = ha.hits().last().unwrap().clone();
-    assert_eq!(last.body, "must-arrive");
+    assert_eq!(last.body_str(), "must-arrive");
+    // Gap audit #9: an up-but-failing target must never open the
+    // circuit — the next real message is its only side-effect-free probe.
+    assert!(
+        !bridge.log().contains("circuit open"),
+        "a 500 is not a connect-class failure (AR15)"
+    );
 }
 
 #[tokio::test]
@@ -123,7 +129,7 @@ async fn l2_s2_ar15_an_outage_accumulates_unclaimed_and_drains_in_order() {
         ha_back.hits().len() == 5
     })
     .await;
-    let bodies: Vec<String> = ha_back.hits().iter().map(|hit| hit.body.clone()).collect();
+    let bodies: Vec<String> = ha_back.hits().iter().map(|hit| hit.body_str()).collect();
     assert_eq!(bodies, ["m1", "m2", "m3", "m4", "m5"], "publish order (S2)");
 
     // AR15's point: while the circuit was open nothing was claimed, so
@@ -166,7 +172,7 @@ async fn l2_s3_kill_nine_mid_delivery_loses_nothing() {
     // The hit is recorded before the slow response completes: kill the
     // bridge exactly mid-delivery, after the POST, before the ack (S3).
     wait_until("the delivery to start", Duration::from_secs(30), || {
-        ha.hits().iter().any(|hit| hit.body == "precious")
+        ha.hits().iter().any(|hit| hit.body_str() == "precious")
     })
     .await;
     bridge.kill_hard();
@@ -176,7 +182,7 @@ async fn l2_s3_kill_nine_mid_delivery_loses_nothing() {
     wait_until("the redelivery", Duration::from_secs(60), || {
         ha.hits()
             .iter()
-            .filter(|hit| hit.body == "precious")
+            .filter(|hit| hit.body_str() == "precious")
             .count()
             >= 2
             && bridge2.log().contains("delivered and acked")
@@ -284,7 +290,7 @@ async fn l2_k9_ar7_the_token_reaches_the_hub_but_never_the_logs() {
     publish_authed(&hub, Some(token), topic, "text/plain", sentinel).await;
 
     wait_until("the doored delivery", Duration::from_secs(30), || {
-        ha.hits().iter().any(|hit| hit.body == sentinel)
+        ha.hits().iter().any(|hit| hit.body_str() == sentinel)
     })
     .await;
     let log = bridge.log();
@@ -327,5 +333,148 @@ async fn l2_k9_a_missing_token_logs_the_apps_remedy_once_without_flooding() {
     assert!(
         ha.hits().is_empty(),
         "nothing may be delivered without auth"
+    );
+}
+
+#[tokio::test]
+async fn l2_k2_ar4_a_binary_payload_survives_byte_for_byte() {
+    let hub = Hub::start().await;
+    let ha = FakeHa::start();
+    let topic = "l2.binary";
+    let bridge = Bridge::start(&route_config(
+        &hub,
+        "binary",
+        topic,
+        &ha.url("/api/webhook/x"),
+    ));
+
+    wait_first_poll(&bridge).await;
+    // Deliberately not UTF-8: a lossy string round-trip would corrupt it.
+    let payload: Vec<u8> = vec![0x00, 0xff, 0x9f, 0x92, 0x96, 0x00, 0x80, 0x7f];
+    publish_bytes(
+        &hub,
+        topic,
+        Some("application/octet-stream"),
+        payload.clone(),
+    )
+    .await;
+
+    wait_until("the binary hit", Duration::from_secs(30), || {
+        !ha.hits().is_empty()
+    })
+    .await;
+    let hit = ha.hits()[0].clone();
+    assert_eq!(hit.body, payload, "bytes, not a lossy string (K2/NG2)");
+    assert_eq!(
+        hit.content_type.as_deref(),
+        Some("application/octet-stream")
+    );
+    // Gap audit #4: all four metadata headers, not a spot check (AR4).
+    assert_eq!(hit.header("mailbox-topic"), Some(topic));
+    assert!(hit.header("mailbox-id").is_some());
+    assert!(hit.header("mailbox-attempt").is_some());
+    assert!(hit.header("mailbox-published-at").is_some());
+}
+
+#[tokio::test]
+async fn l2_f1_an_oversize_message_is_nacked_and_dead_letters_without_oom() {
+    let hub = Hub::start().await;
+    let ha = FakeHa::start();
+    let topic = "l2.oversize";
+
+    publish(&hub, topic, "text/plain", "setup").await;
+    let (setup_id, _) = poll_once_from(&hub, topic, "ha-bridge", true)
+        .await
+        .expect("setup");
+    ack(&hub, topic, "ha-bridge", &setup_id).await;
+
+    // Cap at the validation minimum; the policy shortens the cycle.
+    let config = route_config(&hub, "oversize", topic, &ha.url("/api/webhook/x"))
+        .replace(
+            "webhook_url =",
+            "webhook_timeout_ms = 1000\n\
+             policy = { lease_ms = 12000, max_attempts = 2, backoff_ms = 200 }\n\
+             webhook_url =",
+        )
+        .replace(
+            "hub_url =",
+            "[defaults]\nmax_body_bytes = 1024\n\nhub_url =",
+        );
+    // TOML ordering: [defaults] must not swallow hub_url — rebuild.
+    let config = format!(
+        "hub_url = \"{}\"\n\n[defaults]\nmax_body_bytes = 1024\nwebhook_timeout_ms = 1000\n\n{}",
+        hub.base(),
+        config
+            .lines()
+            .skip_while(|line| !line.starts_with("[[routes]]"))
+            .collect::<Vec<_>>()
+            .join("\n")
+    );
+    let bridge = Bridge::start(&config);
+    publish(&hub, topic, "text/plain", &"X".repeat(8 * 1024)).await;
+
+    wait_until("the oversize warn", Duration::from_secs(30), || {
+        bridge.log().contains("larger than max_body_bytes")
+    })
+    .await;
+    let deadline = std::time::Instant::now() + Duration::from_secs(30);
+    loop {
+        if !dead_letters(&hub, topic, "ha-bridge")
+            .await
+            .contains("\"dead_letters\":[]")
+        {
+            break;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the oversize message never dead-lettered"
+        );
+        tokio::time::sleep(Duration::from_millis(200)).await;
+    }
+    assert!(ha.hits().is_empty(), "an oversize body is never forwarded");
+}
+
+#[tokio::test]
+async fn l2_k9_the_token_stays_out_of_failure_path_and_json_logs() {
+    let token = "geheim-token-voor-de-faalpaden-check";
+    let mut hub = Hub::start_with_door(token).await;
+    let ha = FakeHa::start();
+    let topic = "l2.doorfail";
+    let sentinel = "faalpad-sentinel-payload";
+
+    // JSON log format (Loki) with everything at trace level — the
+    // widest possible net for a leak (gap audit #5).
+    let config = route_config(&hub, "doorfail", topic, &ha.url("/api/webhook/x"));
+    let bridge = Bridge::start_with_env(
+        &config,
+        &[
+            ("HUB_BRIDGE_TOKEN", token),
+            ("HUB_BRIDGE_LOG", "trace"),
+            ("HUB_BRIDGE_LOG_FORMAT", "json"),
+        ],
+    );
+    wait_first_poll(&bridge).await;
+    publish_authed(&hub, Some(token), topic, "text/plain", sentinel).await;
+    wait_until("the delivery", Duration::from_secs(30), || {
+        ha.hits().iter().any(|hit| hit.body_str() == sentinel)
+    })
+    .await;
+
+    // Now the failure paths: hub gone mid-run.
+    hub.stop();
+    wait_until("the hub-down line", Duration::from_secs(30), || {
+        bridge.log().contains("hub unreachable")
+    })
+    .await;
+
+    let log = bridge.log();
+    assert!(log.contains("{\""), "json log format is in effect");
+    assert!(
+        !log.contains(token),
+        "the token must survive trace-level failure paths unlogged (rule 10)"
+    );
+    assert!(
+        !log.contains(sentinel),
+        "payloads stay out at trace level too"
     );
 }

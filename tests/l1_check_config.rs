@@ -5,7 +5,11 @@ use std::io::Write;
 use std::process::Command;
 
 fn run(args: &[&str]) -> std::process::Output {
-    Command::new(env!("CARGO_BIN_EXE_hub-bridge"))
+    // BRIDGE_BIN lets the release workflow run this suite against the
+    // musl artifact (T8/M1).
+    let binary =
+        std::env::var("BRIDGE_BIN").unwrap_or_else(|_| env!("CARGO_BIN_EXE_hub-bridge").into());
+    Command::new(binary)
         .args(args)
         .output()
         .expect("binary runs")
@@ -54,7 +58,7 @@ fn l1_k8_a_missing_config_file_fails_with_a_remedy() {
 }
 
 #[test]
-fn l1_an_unknown_argument_fails_with_a_remedy() {
+fn l1_w2_an_unknown_argument_fails_with_a_remedy() {
     let out = run(&["--frobnicate"]);
     assert_eq!(out.status.code(), Some(2));
     let stderr = String::from_utf8_lossy(&out.stderr);
@@ -62,9 +66,30 @@ fn l1_an_unknown_argument_fails_with_a_remedy() {
 }
 
 #[test]
-fn l1_version_prints_the_crate_version() {
+fn l1_w2_version_prints_the_crate_version() {
     let out = run(&["--version"]);
     assert!(out.status.success());
     let stdout = String::from_utf8_lossy(&out.stdout);
     assert!(stdout.contains(env!("CARGO_PKG_VERSION")), "{stdout}");
+}
+
+#[test]
+fn l1_w2_check_config_makes_no_network_calls() {
+    // Gap audit #15: --check-config is wired as ExecStartPre= on a
+    // booting LXC where the hub may not be up yet — a pre-flight call
+    // would break every cold boot. Point the config at a listener we
+    // hold and prove nothing ever connects.
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+    let addr = listener.local_addr().expect("addr");
+    listener.set_nonblocking(true).expect("nonblocking");
+
+    let config = VALID.replace("http://127.0.0.1:8080", &format!("http://{addr}"));
+    let file = config_file(&config);
+    let out = run(&["--config", file.path().to_str().unwrap(), "--check-config"]);
+    assert!(out.status.success(), "stderr: {:?}", out.stderr);
+
+    match listener.accept() {
+        Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {}
+        other => panic!("check-config touched the network: {other:?}"),
+    }
 }

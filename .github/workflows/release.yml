@@ -4,6 +4,8 @@ on:
   push:
     tags: ["v*"]
 
+# Security F3: actions pinned to commit SHAs; contents:write is needed
+# to upload the release assets.
 permissions:
   contents: write
 
@@ -11,24 +13,24 @@ jobs:
   release:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@master
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # master 2026-08
         with:
           toolchain: "1.97"
           targets: x86_64-unknown-linux-musl
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
       - name: Build the artifact
         run: cargo build --release --target x86_64-unknown-linux-musl
       - name: E2E the released artifact (the shipped binary is the tested binary)
         env:
-          MAILBOX_IMAGE: ghcr.io/kennypassenier/mailbox:1.0.0
+          MAILBOX_IMAGE: ghcr.io/kennypassenier/mailbox@sha256:404cf27409f28fc3aadd00a5cf027c239b4e99c5c516681fabd99f9ce7beaea9 # 1.0.0
           BRIDGE_BIN: target/x86_64-unknown-linux-musl/release/hub-bridge
-        run: cargo test --test l2_pump
+        run: cargo test --test l1_check_config --test l2_pump --test l4_extras
       - name: Package with checksum manifest
         run: |
           cp target/x86_64-unknown-linux-musl/release/hub-bridge hub-bridge-x86_64-linux-musl
           sha256sum hub-bridge-x86_64-linux-musl > SHA256SUMS
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           files: |
             hub-bridge-x86_64-linux-musl

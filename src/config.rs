@@ -92,8 +92,9 @@ pub enum ConfigError {
     },
 
     #[error(
-        "route {name:?}: policy.lease_ms is {value:?}, not a positive integer. Remedy: give the \
-         lease in milliseconds, e.g. lease_ms = 300000 for five minutes."
+        "route {name:?}: policy.lease_ms is {value}, not an integer between 1000 and 86400000 \
+         (1 s - 24 h). Remedy: give the lease in milliseconds, e.g. lease_ms = 300000 for five \
+         minutes."
     )]
     PolicyLease { name: String, value: String },
 
@@ -103,6 +104,48 @@ pub enum ConfigError {
         problem: String,
         remedy: String,
     },
+
+    #[error(
+        "{field} is {url:?}, which is not a usable http URL ({reason}). Remedy: use a full \
+         http://host[:port]/path address without credentials — the bridge sends its token in a \
+         header, never in a URL."
+    )]
+    UrlInvalid {
+        field: String,
+        url: String,
+        reason: String,
+    },
+
+    #[error(
+        "[defaults] max_body_bytes is {value}, below 1024. Remedy: the cap protects the bridge \
+         from buffering runaway messages; anything from 1024 up is accepted, the default is \
+         16 MiB."
+    )]
+    BodyCap { value: u64 },
+}
+
+/// Security F6: a prefix check alone let `http://` through, which then
+/// wedged a route in circuit-open forever at runtime. Parse for real.
+fn validate_url(field: &str, url: &str) -> Result<(), ConfigError> {
+    if !url.starts_with("http://") {
+        return Err(ConfigError::UrlScheme {
+            field: field.into(),
+            url: url.into(),
+        });
+    }
+    let invalid = |reason: &str| ConfigError::UrlInvalid {
+        field: field.into(),
+        url: url.into(),
+        reason: reason.into(),
+    };
+    let parsed = reqwest::Url::parse(url).map_err(|error| invalid(&error.to_string()))?;
+    if parsed.host_str().is_none_or(str::is_empty) {
+        return Err(invalid("it has no host"));
+    }
+    if !parsed.username().is_empty() || parsed.password().is_some() {
+        return Err(invalid("it carries credentials (userinfo)"));
+    }
+    Ok(())
 }
 
 #[derive(Debug, Deserialize)]
@@ -123,6 +166,10 @@ pub struct Config {
 pub struct Defaults {
     pub poll_wait_ms: u64,
     pub webhook_timeout_ms: u64,
+    /// Security F1: a claimed message is buffered in memory before the
+    /// webhook POST; this caps it so a misbehaving hub cannot OOM the
+    /// bridge. An oversize message is nacked and dead-letters visibly.
+    pub max_body_bytes: u64,
 }
 
 impl Default for Defaults {
@@ -130,6 +177,7 @@ impl Default for Defaults {
         Self {
             poll_wait_ms: 25_000,
             webhook_timeout_ms: 10_000,
+            max_body_bytes: 16 * 1024 * 1024,
         }
     }
 }
@@ -222,12 +270,7 @@ impl Config {
         while self.hub_url.ends_with('/') {
             self.hub_url.pop();
         }
-        if !self.hub_url.starts_with("http://") {
-            return Err(ConfigError::UrlScheme {
-                field: "hub_url".into(),
-                url: self.hub_url.clone(),
-            });
-        }
+        validate_url("hub_url", &self.hub_url)?;
         if let Some(listen) = &self.healthz_listen
             && listen.parse::<SocketAddr>().is_err()
         {
@@ -244,6 +287,11 @@ impl Config {
             return Err(ConfigError::WebhookTimeout {
                 scope: "[defaults]".into(),
                 value: self.defaults.webhook_timeout_ms,
+            });
+        }
+        if self.defaults.max_body_bytes < 1024 {
+            return Err(ConfigError::BodyCap {
+                value: self.defaults.max_body_bytes,
             });
         }
         if self.routes.is_empty() {
@@ -264,26 +312,46 @@ impl Config {
             }
             if let Some(policy) = &route.policy {
                 for (key, value) in policy {
-                    if !matches!(
-                        value,
-                        toml::Value::Integer(_) | toml::Value::Boolean(_) | toml::Value::String(_)
-                    ) {
+                    if key.is_empty() || !key.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+                    {
+                        return Err(ConfigError::Route {
+                            name: route.name.clone(),
+                            problem: format!("policy key {key:?} is not a plain field name."),
+                            remedy: "policy keys are the hub's snake_case fields, e.g. lease_ms, \
+                                     max_attempts."
+                                .into(),
+                        });
+                    }
+                    // Security F7: the policy JSON is hand-built, so
+                    // values that would need JSON escaping are refused
+                    // rather than mis-encoded (which would make the PUT
+                    // fail forever at runtime).
+                    let clean = match value {
+                        toml::Value::Integer(_) | toml::Value::Boolean(_) => true,
+                        toml::Value::String(text) => text
+                            .bytes()
+                            .all(|b| (0x20..=0x7e).contains(&b) && b != b'"' && b != b'\\'),
+                        _ => false,
+                    };
+                    if !clean {
                         return Err(ConfigError::Route {
                             name: route.name.clone(),
                             problem: format!(
-                                "policy.{key} is {value}, which is not an integer, string or \
-                                 boolean."
+                                "policy.{key} is {value}, which is not an integer, boolean or \
+                                 plain ASCII string."
                             ),
                             remedy: "policy blocks are flat hub fields, e.g. lease_ms = 300000, \
-                                     max_attempts = 25 — see the hub's policy endpoint for what \
-                                     it accepts."
+                                     max_attempts = 25, ttl_ms = \"never\" — see the hub's \
+                                     policy endpoint for what it accepts."
                                 .into(),
                         });
                     }
                 }
             }
             if let Some(lease) = route.policy.as_ref().and_then(|p| p.get("lease_ms"))
-                && !lease.as_integer().is_some_and(|value| value > 0)
+                && !lease
+                    .as_integer()
+                    .is_some_and(|value| (1_000..=86_400_000).contains(&value))
             {
                 return Err(ConfigError::PolicyLease {
                     name: route.name.clone(),
@@ -368,12 +436,10 @@ impl Route {
                  e.g. \"ha-bridge\".",
             );
         }
-        if !self.webhook_url.starts_with("http://") {
-            return Err(ConfigError::UrlScheme {
-                field: format!("route {:?} webhook_url", self.name),
-                url: self.webhook_url.clone(),
-            });
-        }
+        validate_url(
+            &format!("route {:?} webhook_url", self.name),
+            &self.webhook_url,
+        )?;
         Ok(())
     }
 }
@@ -564,6 +630,114 @@ mod tests {
         );
         let config = parse(&text).expect("valid config");
         assert_eq!(config.shutdown_grace(), Duration::from_millis(17_000));
+    }
+
+    #[test]
+    fn l1_ar5_an_absurd_policy_lease_is_refused_not_wrapped() {
+        // Security review F7: lease_ms * 7 must never overflow into a
+        // "valid" budget.
+        let text = VALID.replace(
+            "webhook_url =",
+            "policy = { lease_ms = 9223372036854775 }\n        webhook_url =",
+        );
+        remedy_of(parse(&text).expect_err("absurd lease must be refused"));
+    }
+
+    #[test]
+    fn l1_k8_a_policy_string_needing_json_escapes_is_refused() {
+        // Security review F7: policy JSON is hand-built; values that
+        // would need escaping are refused instead of mis-encoded.
+        let text = VALID.replace(
+            "webhook_url =",
+            "policy = { ttl_ms = \"nev\\\"er\" }\n        webhook_url =",
+        );
+        remedy_of(parse(&text).expect_err("quote in policy string must be refused"));
+    }
+
+    #[test]
+    fn l1_k8_an_unparsable_webhook_url_is_refused_with_a_remedy() {
+        // Security review F6: "http://" passes a prefix check, then
+        // wedges the route in a permanent circuit-open state at runtime.
+        let text = VALID.replace(
+            "webhook_url = \"http://ha.lan:8123/api/webhook/hub_mailbox_events\"",
+            "webhook_url = \"http://\"",
+        );
+        remedy_of(parse(&text).expect_err("hostless url must be refused"));
+    }
+
+    #[test]
+    fn l1_k8_a_userinfo_url_is_refused() {
+        let text = VALID.replace("http://ha.lan:8123", "http://user:pw@ha.lan:8123");
+        remedy_of(parse(&text).expect_err("userinfo must be refused"));
+    }
+
+    #[test]
+    fn l1_k8_a_tiny_body_cap_is_refused() {
+        let text = format!("{VALID}\n[defaults]\nmax_body_bytes = 100\n");
+        remedy_of(parse(&text).expect_err("cap below 1024 must be refused"));
+    }
+
+    #[test]
+    fn l1_k8_a_per_route_tiny_webhook_timeout_is_refused() {
+        let text = VALID.replace(
+            "webhook_url =",
+            "webhook_timeout_ms = 50\n        webhook_url =",
+        );
+        let message = remedy_of(parse(&text).expect_err("per-route tiny timeout"));
+        assert!(message.contains("mailbox-events"), "{message}");
+    }
+
+    #[test]
+    fn l1_k8_a_policy_value_of_a_refused_type_is_refused() {
+        for bad in [
+            "policy = { lease_ms = 1.5 }",
+            "policy = { steps = [1, 2] }",
+            "policy = { nested = { a = 1 } }",
+        ] {
+            let text = VALID.replace("webhook_url =", &format!("{bad}\n        webhook_url ="));
+            remedy_of(parse(&text).expect_err(bad));
+        }
+    }
+
+    #[test]
+    fn l1_k8_a_zero_or_negative_policy_lease_is_refused() {
+        for lease in ["0", "-5"] {
+            let text = VALID.replace(
+                "webhook_url =",
+                &format!("policy = {{ lease_ms = {lease} }}\n        webhook_url ="),
+            );
+            remedy_of(parse(&text).expect_err("non-positive lease"));
+        }
+    }
+
+    #[test]
+    fn l1_w3_policy_json_renders_integers_strings_and_booleans() {
+        let text = VALID.replace(
+            "webhook_url =",
+            "policy = { max_attempts = 25, ttl_ms = \"never\", flagged = true }\n        \
+             webhook_url =",
+        );
+        let config = parse(&text).expect("valid config");
+        let json = Config::policy_json(&config.routes[0]).expect("policy json");
+        assert_eq!(
+            json,
+            "{\"flagged\":true,\"max_attempts\":25,\"ttl_ms\":\"never\"}"
+        );
+    }
+
+    #[test]
+    fn l1_k6_k10_the_shipped_example_config_is_valid() {
+        // Security/gap audit: the file the runbook copies to LXC 109
+        // must never ship with a typo the validator would refuse.
+        let shipped = include_str!("../deploy/config.toml");
+        let config = parse(shipped).expect("deploy/config.toml parses");
+        assert!(
+            config
+                .routes
+                .iter()
+                .any(|route| route.topic == "mailbox.events"),
+            "the K6 default route is present"
+        );
     }
 
     #[test]

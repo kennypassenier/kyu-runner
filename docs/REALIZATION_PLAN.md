@@ -37,4 +37,6 @@ when the binary's shape is settled.
 
 | Gate | Date | Decision | Recorded |
 |---|---|---|---|
-| — | | | |
+| Phase 7 · test-gap audit | 2026-08-29 | AFK-provisional: 20 gaps found; closed 14 in the same pass (AR1 supervision built + panic drill, multi-route independence E2E, AR16 from-now E2E, binary payload + full header asserts, trace/json token scans on failure paths, K7 log-volume bound, AR15 5xx boundary assert, W2 no-network assert, shipped-config parse test, W3 refused-policy E2E, policy_json unit tests, three K8 arms, Backoff units, release workflow → 3 suites vs artifact); 6 accepted → TEST_PLAN.md; ratification queued (Q11) | TEST_PLAN.md |
+| Phase 7 · security pass (interim for /security-review, see Q10) | 2026-08-29 | AFK-provisional: 12 findings, 0 critical/high, all code fixes landed (F1 16 MiB body cap streamed + MemoryMax backstop, F2 healthz timeout/semaphore/accept-backoff, F3 SHA-pinned actions + read-only CI token + image digest, F4 control-char sanitisation of hub text, F5 mailbox-id charset, F6 real URL validation, F7 policy JSON constraints + lease bound, F8 read -rs token entry, F9 systemd hardening set, F12 healthz bind guidance); ratification queued (Q12) | this row + commits |
+| Phase 7 · reasoned-vs-measured sweep | 2026-08-29 | Docker harness path + image measured (full suite via MAILBOX_IMAGE), restore drill measured (DRILL-OK); remaining argued claims all live in the Q9 real-HA/LXC step | TEST_PLAN.md |

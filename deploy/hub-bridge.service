@@ -15,6 +15,9 @@ Type=simple
 ExecStartPre=/usr/local/bin/hub-bridge --config /etc/hub-bridge/config.toml --check-config
 ExecStart=/usr/local/bin/hub-bridge --config /etc/hub-bridge/config.toml
 # AR7: the app token, and nothing else, lives here (root-owned, 0600).
+# The leading "-" tolerates absence because a doorless hub is a
+# supported dev setup; on a doored hub a missing file shows as a 401
+# with the /apps remedy in the journal, never a silent success.
 EnvironmentFile=-/etc/hub-bridge/token.env
 # The bridge is stateless (K5): no state directory, no disk to protect.
 DynamicUser=yes
@@ -22,6 +25,25 @@ NoNewPrivileges=yes
 ProtectSystem=strict
 ProtectHome=yes
 PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectProc=invisible
+RestrictNamespaces=yes
+RestrictRealtime=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_INET AF_INET6
+SystemCallFilter=@system-service
+SystemCallArchitectures=native
+UMask=0077
+# Security F1 backstop: the in-process body cap (max_body_bytes) is the
+# real guard; this keeps a bug in it from taking the LXC down with it.
+MemoryMax=128M
 Restart=on-failure
 RestartSec=5
 

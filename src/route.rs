@@ -14,6 +14,7 @@ use crate::health::HealthState;
 use crate::hub::{Claimed, HubClient, HubError, PollOutcome};
 use crate::webhook::{self, DeliveryError, WebhookClient};
 
+#[derive(Clone)]
 pub struct RouteRunner {
     pub route: Route,
     pub hub: Arc<HubClient>,
@@ -156,6 +157,17 @@ impl RouteRunner {
                         .await;
                     self.health.set(&name, "idle");
                 }
+                Ok(PollOutcome::Oversize { id, at_least }) => {
+                    self.note_recovery(&name, &mut hub_down, &mut auth_denied, &mut hub_backoff);
+                    // Bounded: at most once per delivery attempt, and
+                    // the attempts run out into a visible dead letter.
+                    warn!(
+                        route = %name, id = %id, at_least_bytes = at_least,
+                        "message larger than max_body_bytes — nacked without delivery; it will \
+                         dead-letter visibly when its attempts run out (security F1)"
+                    );
+                    self.settle_nack(&name, &id).await;
+                }
                 Ok(PollOutcome::Message(message)) => {
                     self.note_recovery(&name, &mut hub_down, &mut auth_denied, &mut hub_backoff);
                     replay = false;
@@ -163,6 +175,16 @@ impl RouteRunner {
                     self.apply_policy(&name, &mut policy_pending, &mut policy_warned)
                         .await;
                     self.health.set(&name, "delivering");
+                    // AR1 supervision drill hook: debug builds only, so
+                    // the release binary cannot carry the trigger.
+                    #[cfg(debug_assertions)]
+                    if std::env::var("HUB_BRIDGE_TEST_PANIC_ROUTE").as_deref() == Ok(name.as_str())
+                    {
+                        // The supervisor must respawn the loop; the
+                        // unacked claim redelivers (K5).
+                        unsafe { std::env::remove_var("HUB_BRIDGE_TEST_PANIC_ROUTE") };
+                        panic!("test-injected route panic (AR1 drill)");
+                    }
                     match self
                         .deliver_with_budget(&name, &message, &mut shutdown)
                         .await
@@ -172,11 +194,11 @@ impl RouteRunner {
                             self.health.set(&name, "idle");
                         }
                         DeliverEnd::Shutdown => {
-                            self.settle_nack(&name, &message).await;
+                            self.settle_nack(&name, &message.id).await;
                             break;
                         }
                         DeliverEnd::GiveUp { connect_class } => {
-                            self.settle_nack(&name, &message).await;
+                            self.settle_nack(&name, &message.id).await;
                             if connect_class {
                                 // AR15: stop claiming so the backlog
                                 // accumulates unclaimed — no attempts
@@ -233,9 +255,10 @@ impl RouteRunner {
             .await
         {
             Ok(in_force) => {
+                // Security F4: hub-controlled text, sanitized for the log.
                 info!(
                     route = %name,
-                    in_force = %in_force.trim(),
+                    in_force = %crate::hub::printable(in_force.trim(), 600),
                     "policy in force (W3) — the hub's answer is authoritative; note that a \
                      policy write replaces every field, so dashboard tweaks are reverted here"
                 );
@@ -344,16 +367,48 @@ impl RouteRunner {
         }
     }
 
-    async fn settle_nack(&self, name: &str, message: &Claimed) {
+    async fn settle_nack(&self, name: &str, id: &str) {
         if let Err(error) = self
             .hub
-            .nack(&self.route.topic, &self.route.subscription, &message.id)
+            .nack(&self.route.topic, &self.route.subscription, id)
             .await
         {
             debug!(
-                route = %name, id = %message.id, %error,
+                route = %name, id = %id, %error,
                 "nack failed — the lease will expire and redeliver on its own (mailbox K5)"
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Backoff;
+
+    #[test]
+    fn l3_ar6_backoff_doubles_to_its_cap_with_bounded_jitter() {
+        let mut backoff = Backoff::new(500, 30_000);
+        let mut expected = 500u64;
+        for _ in 0..10 {
+            let delay = backoff.next().as_millis() as u64;
+            // Jitter adds at most an eighth of the base step.
+            assert!(
+                delay >= expected && delay <= expected + expected / 8 + 1,
+                "delay {delay} outside [{expected}, +12.5%]"
+            );
+            expected = (expected * 2).min(30_000);
+        }
+        assert_eq!(expected, 30_000, "the cap is reached and held");
+    }
+
+    #[test]
+    fn l3_ar6_reset_returns_to_the_base() {
+        let mut backoff = Backoff::new(1_000, 60_000);
+        for _ in 0..8 {
+            backoff.next();
+        }
+        backoff.reset();
+        let delay = backoff.next().as_millis() as u64;
+        assert!((1_000..=1_126).contains(&delay), "reset delay {delay}");
     }
 }

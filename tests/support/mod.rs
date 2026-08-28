@@ -49,7 +49,9 @@ fn free_port() -> u16 {
 
 fn hub_binary() -> Option<PathBuf> {
     if let Ok(path) = std::env::var("MAILBOX_BIN") {
-        return Some(PathBuf::from(path));
+        // MAILBOX_BIN="" forces the docker path even when the default
+        // binary exists — how CI's environment is rehearsed locally.
+        return (!path.is_empty()).then(|| PathBuf::from(path));
     }
     let default =
         PathBuf::from(std::env::var("HOME").ok()?).join("Projects/mailbox/target/release/mailbox");
@@ -215,6 +217,18 @@ impl Drop for Hub {
 
 pub async fn publish(hub: &Hub, topic: &str, content_type: &str, body: &str) {
     publish_authed(hub, None, topic, content_type, body).await;
+}
+
+/// Raw publish: arbitrary bytes, optionally without a content-type.
+pub async fn publish_bytes(hub: &Hub, topic: &str, content_type: Option<&str>, body: Vec<u8>) {
+    let mut request = reqwest::Client::new()
+        .post(format!("{}/t/{topic}", hub.base()))
+        .body(body);
+    if let Some(content_type) = content_type {
+        request = request.header("content-type", content_type);
+    }
+    let response = request.send().await.expect("publish bytes");
+    assert_eq!(response.status().as_u16(), 201, "publish should be 201");
 }
 
 pub async fn publish_authed(
@@ -385,7 +399,22 @@ pub struct Hit {
     pub path: String,
     pub content_type: Option<String>,
     pub headers: Vec<(String, String)>,
-    pub body: String,
+    /// Raw bytes: K2's byte-for-byte promise includes payloads that
+    /// are not UTF-8 (gap audit #4).
+    pub body: Vec<u8>,
+}
+
+impl Hit {
+    pub fn body_str(&self) -> String {
+        String::from_utf8_lossy(&self.body).to_string()
+    }
+
+    pub fn header(&self, name: &str) -> Option<&str> {
+        self.headers
+            .iter()
+            .find(|(header, _)| header == name)
+            .map(|(_, value)| value.as_str())
+    }
 }
 
 pub struct FakeHa {
@@ -511,7 +540,7 @@ fn handle(mut stream: std::net::TcpStream, hits: Arc<Mutex<Vec<Hit>>>, mode: HaM
         path,
         content_type,
         headers,
-        body: String::from_utf8_lossy(&body).to_string(),
+        body,
     });
     let response = match mode {
         HaMode::Ok200 => {
@@ -564,7 +593,9 @@ impl Bridge {
         command
             .arg("--config")
             .arg(config.path())
-            .env("HUB_BRIDGE_LOG", "debug")
+            // Crate-scoped debug: hyper/reqwest connect spam would break
+            // the K7 log-volume bound and drown the assertions.
+            .env("HUB_BRIDGE_LOG", "info,hub_bridge=debug")
             .stdout(Stdio::null())
             .stderr(log_file);
         for (name, value) in env {
@@ -588,8 +619,12 @@ impl Bridge {
     }
 
     pub fn sigterm(&self) {
+        self.signal("-TERM");
+    }
+
+    pub fn signal(&self, signal: &str) {
         let _ = Command::new("kill")
-            .args(["-TERM", &self.child.id().to_string()])
+            .args([signal, &self.child.id().to_string()])
             .output();
     }
 

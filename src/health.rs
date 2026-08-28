@@ -37,23 +37,41 @@ impl HealthState {
 }
 
 pub async fn serve(listener: tokio::net::TcpListener, state: Arc<HealthState>) {
+    // Security F2: a liveness probe must not be the easiest way to
+    // starve the process of fds — bound the concurrent connections,
+    // time-limit each one, and never busy-spin on accept errors.
+    let permits = Arc::new(tokio::sync::Semaphore::new(16));
     loop {
-        let Ok((mut stream, _)) = listener.accept().await else {
+        let (mut stream, _) = match listener.accept().await {
+            Ok(accepted) => accepted,
+            Err(_) => {
+                // EMFILE returns immediately; sleeping keeps fd
+                // exhaustion from becoming a CPU spin as well.
+                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                continue;
+            }
+        };
+        let Ok(permit) = Arc::clone(&permits).try_acquire_owned() else {
+            // Over the cap: drop the connection rather than queue it.
             continue;
         };
         let state = Arc::clone(&state);
         tokio::spawn(async move {
-            // Drain whatever request line arrives; the answer is the
-            // same for every path — this is a liveness probe, not an API.
-            let mut buffer = [0u8; 1024];
-            let _ = stream.read(&mut buffer).await;
-            let body = state.render();
-            let response = format!(
-                "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\n\
-                 content-length: {}\r\nconnection: close\r\n\r\n{body}",
-                body.len()
-            );
-            let _ = stream.write_all(response.as_bytes()).await;
+            let _permit = permit;
+            let answer = async {
+                // Drain whatever request line arrives; the answer is
+                // the same for every path — a liveness probe, not an API.
+                let mut buffer = [0u8; 1024];
+                let _ = stream.read(&mut buffer).await;
+                let body = state.render();
+                let response = format!(
+                    "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\n\
+                     content-length: {}\r\nconnection: close\r\n\r\n{body}",
+                    body.len()
+                );
+                let _ = stream.write_all(response.as_bytes()).await;
+            };
+            let _ = tokio::time::timeout(std::time::Duration::from_secs(5), answer).await;
         });
     }
 }

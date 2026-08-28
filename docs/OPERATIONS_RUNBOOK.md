@@ -32,10 +32,11 @@ Reality checks baked into these procedures (from the Phase 4 critic):
    every route you are about to enable — see §6. Every webhook trigger
    sets `local_only: true`.
 4. Mint the app token: hub dashboard → `/apps` → register
-   `hub-bridge` → copy the token. On LXC 109:
+   `hub-bridge` → copy the token. On LXC 109 (the `read -rs` keeps the
+   token out of the shell history — standing rule 10):
    ```
    install -m 600 /dev/null /etc/hub-bridge/token.env
-   echo 'HUB_BRIDGE_TOKEN=<token>' > /etc/hub-bridge/token.env
+   read -rs TOKEN && printf 'HUB_BRIDGE_TOKEN=%s\n' "$TOKEN" > /etc/hub-bridge/token.env && unset TOKEN
    ```
 5. Config: `mkdir -p /etc/hub-bridge` and copy `deploy/config.toml`
    to `/etc/hub-bridge/config.toml`. Verify:
@@ -85,10 +86,12 @@ The bridge's full state is: the binary (releases), the config + unit
    `http://10.10.10.9:8080/healthz`, expect 200. The endpoint stays
    open on a token-protected hub.
 2. **Uptime Kuma → bridge (optional, W4):** uncomment
-   `healthz_listen = "0.0.0.0:8081"` in the config, restart, add a
-   monitor on `http://10.10.10.9:8081/healthz`. Without it, a dead
-   bridge still surfaces via the hub's idle-subscription flag and the
-   `mailbox.events` route.
+   `healthz_listen` in the config — bind the address Kuma actually
+   probes (`10.10.10.9:8081`), or leave it commented out when unused:
+   any LAN device can reach an open listener, and less surface is less
+   surface. Restart, add a monitor on `http://10.10.10.9:8081/healthz`.
+   Without it, a dead bridge still surfaces via the hub's
+   idle-subscription flag and the `mailbox.events` route.
 3. **Grafana → sweeper alert:** the hub's `/metrics` exposes
    `mailbox_sweeper_age_ms` — the one series that catches the hub
    *hanging* rather than dying. Alert when it exceeds 60 000 for

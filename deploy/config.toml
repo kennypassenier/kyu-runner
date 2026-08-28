@@ -12,7 +12,9 @@
 hub_url = "http://127.0.0.1:8080"
 
 # W4: uncomment to give Uptime Kuma a direct probe on the bridge.
-# healthz_listen = "0.0.0.0:8081"
+# Bind the address Kuma probes (the LXC's LAN address), not 0.0.0.0 —
+# and leave it off entirely when nothing monitors it.
+# healthz_listen = "10.10.10.9:8081"
 
 # ── K6/P8 · the hub watches itself, the house sees it ──────────────────
 # The hub's own events (message.dead_lettered, subscription.archived,

@@ -45,6 +45,13 @@ pub enum PollOutcome {
     /// 404 `UnknownTopic`: the topic has not been born yet — mailbox
     /// creates topics on first publish. A quiet wait state (AR6/AR16).
     TopicUnborn,
+    /// Security F1: the body outgrew the configured cap while being
+    /// read. The claim is real (the id is here to nack it); the bytes
+    /// were discarded to keep the bridge's memory bounded.
+    Oversize {
+        id: String,
+        at_least: usize,
+    },
 }
 
 pub struct HubClient {
@@ -53,10 +60,16 @@ pub struct HubClient {
     base: String,
     token: Option<String>,
     wait_s: u64,
+    max_body_bytes: usize,
 }
 
 impl HubClient {
-    pub fn new(base: &str, token: Option<String>, poll_wait: Duration) -> anyhow::Result<Self> {
+    pub fn new(
+        base: &str,
+        token: Option<String>,
+        poll_wait: Duration,
+        max_body_bytes: u64,
+    ) -> anyhow::Result<Self> {
         // The wire unit for `wait` is whole seconds (mailbox K2).
         let wait_s = poll_wait.as_secs().max(1);
         let poll = Client::builder()
@@ -69,6 +82,7 @@ impl HubClient {
             base: base.trim_end_matches('/').to_string(),
             token,
             wait_s,
+            max_body_bytes: max_body_bytes as usize,
         })
     }
 
@@ -108,8 +122,18 @@ impl HubClient {
                     .get("mailbox-id")
                     .and_then(|value| value.to_str().ok())
                 {
-                    Some(id) => id.to_string(),
-                    None => return Err(HubError::Protocol("mailbox-id")),
+                    // Security F5: the id is interpolated into the
+                    // settle URL path; anything outside the plain
+                    // charset is a protocol violation, not a path.
+                    Some(id)
+                        if !id.is_empty()
+                            && id
+                                .chars()
+                                .all(|c| c.is_ascii_alphanumeric() || "._-".contains(c)) =>
+                    {
+                        id.to_string()
+                    }
+                    _ => return Err(HubError::Protocol("mailbox-id")),
                 };
                 let content_type = response
                     .headers()
@@ -129,11 +153,33 @@ impl HubClient {
                             .map(|value| (name.as_str().to_string(), value.to_string()))
                     })
                     .collect();
-                let body = response
-                    .bytes()
-                    .await
-                    .map_err(|error| HubError::Unreachable(error.to_string()))?
-                    .to_vec();
+                // Security F1: stream with a hard cap instead of
+                // buffering whatever the hub decides to send.
+                if let Some(length) = response.content_length()
+                    && length as usize > self.max_body_bytes
+                {
+                    return Ok(PollOutcome::Oversize {
+                        id,
+                        at_least: length as usize,
+                    });
+                }
+                let mut body = Vec::new();
+                let mut response = response;
+                loop {
+                    match response.chunk().await {
+                        Ok(Some(chunk)) => {
+                            if body.len() + chunk.len() > self.max_body_bytes {
+                                return Ok(PollOutcome::Oversize {
+                                    id,
+                                    at_least: body.len() + chunk.len(),
+                                });
+                            }
+                            body.extend_from_slice(&chunk);
+                        }
+                        Ok(None) => break,
+                        Err(error) => return Err(HubError::Unreachable(error.to_string())),
+                    }
+                }
                 Ok(PollOutcome::Message(Box::new(Claimed {
                     id,
                     body,
@@ -214,7 +260,16 @@ impl HubClient {
 
 async fn read_error_body(response: reqwest::Response) -> String {
     match response.text().await {
-        Ok(text) if !text.is_empty() => text.chars().take(300).collect(),
+        // Security F4: this string ends up in log lines — strip control
+        // characters so a hostile hub cannot forge log entries or
+        // inject terminal escapes via its error bodies.
+        Ok(text) if !text.is_empty() => printable(&text, 300),
         _ => "(no body)".into(),
     }
+}
+
+/// Hub-controlled text, made safe for a log line: control characters
+/// dropped, length bounded.
+pub fn printable(text: &str, max: usize) -> String {
+    text.chars().filter(|c| !c.is_control()).take(max).collect()
 }

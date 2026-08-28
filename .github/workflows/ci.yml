@@ -4,29 +4,34 @@ on:
   push:
   pull_request:
 
+# Security F3: read-only token for CI; actions pinned to commit SHAs
+# (a tag is mutable, a SHA is not).
+permissions:
+  contents: read
+
 jobs:
   gates:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       # rust-toolchain.toml pins the actual version (standing rule 7);
       # the action just makes sure rustup + components are present.
-      - uses: dtolnay/rust-toolchain@master
+      - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # master 2026-08
         with:
           toolchain: "1.97"
           components: rustfmt, clippy
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
       - name: Format check
         run: cargo fmt --all -- --check
       - name: Lint (warnings are errors)
         run: cargo clippy --all-targets -- -D warnings
-      - name: Full test suite (E2E hub from the public image)
+      - name: Full test suite (E2E hub from the public image, by digest)
         env:
-          MAILBOX_IMAGE: ghcr.io/kennypassenier/mailbox:1.0.0
+          MAILBOX_IMAGE: ghcr.io/kennypassenier/mailbox@sha256:404cf27409f28fc3aadd00a5cf027c239b4e99c5c516681fabd99f9ce7beaea9 # 1.0.0
         run: cargo test --all
 
   deny:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: EmbarkStudios/cargo-deny-action@v2
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2

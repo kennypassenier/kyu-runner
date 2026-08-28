@@ -139,8 +139,13 @@ async fn run(config: config::Config, token: Option<String>) -> anyhow::Result<()
     use anyhow::Context;
 
     let hub = Arc::new(
-        HubClient::new(&config.hub_url, token, config.poll_wait())
-            .context("cannot build the hub client")?,
+        HubClient::new(
+            &config.hub_url,
+            token,
+            config.poll_wait(),
+            config.defaults.max_body_bytes,
+        )
+        .context("cannot build the hub client")?,
     );
     let webhook = Arc::new(WebhookClient::new().context("cannot build the webhook client")?);
 
@@ -174,7 +179,7 @@ async fn run(config: config::Config, token: Option<String>) -> anyhow::Result<()
             policy_json: config::Config::policy_json(route),
             health: Arc::clone(&health),
         };
-        tasks.push(tokio::spawn(runner.run(stop_rx.clone())));
+        tasks.push(tokio::spawn(supervise(runner, stop_rx.clone())));
     }
     tracing::info!(
         version = env!("CARGO_PKG_VERSION"),
@@ -202,6 +207,31 @@ async fn run(config: config::Config, token: Option<String>) -> anyhow::Result<()
     }
     tracing::info!("hub-bridge stopped");
     Ok(())
+}
+
+/// AR1: a route task never takes the process down — a panic inside the
+/// loop is logged and the loop respawns after a pause. The unacked
+/// claim it may have held redelivers on its own (K5).
+async fn supervise(runner: RouteRunner, shutdown: watch::Receiver<bool>) {
+    loop {
+        let name = runner.route.name.clone();
+        let handle = tokio::spawn(runner.clone().run(shutdown.clone()));
+        match handle.await {
+            Ok(()) => return,
+            Err(error) => {
+                tracing::error!(
+                    route = %name, %error,
+                    "route loop died unexpectedly — respawning in 5 s (AR1); an unacked claim \
+                     redelivers by itself (K5)"
+                );
+                runner.health.set(&name, "respawning");
+                if *shutdown.borrow() {
+                    return;
+                }
+                tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+            }
+        }
+    }
 }
 
 async fn wait_for_signal() {
