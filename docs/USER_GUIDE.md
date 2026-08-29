@@ -197,6 +197,17 @@ socket is opened.
 **Proven by:** `l4_w4_healthz_reports_route_states_when_opted_in`,
 `l1_w4_healthz_listen_must_be_a_socket_address`.
 
+### W6 · Metrics
+
+The same socket serves `/metrics`: Prometheus counters
+`hub_bridge_delivered_total{route=…}` (delivered to the webhook and
+settled) and `hub_bridge_nacked_total{route=…}` (handed back to the
+hub). Route labels are the K8-restricted route names, so nothing needs
+escaping. Note the house currently has no Prometheus backend to scrape
+it — the endpoint is ready for the day one exists.
+
+**Proven by:** `l6_w6_counters_move_on_delivery_and_on_nack`.
+
 ---
 
 ## Running it

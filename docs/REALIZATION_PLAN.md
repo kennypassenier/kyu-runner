@@ -17,6 +17,7 @@ tested and committed, gates green.
 | L3 | K7, W1 | Hub-down resilience (backoff, transition-only logging, bounded volume) + graceful shutdown. E2E: hub stop/start under load; SIGTERM mid-delivery. |
 | L4 | K6, W3, W4 | `kyu.events` default route in shipped config; declarative route policy PUT at startup; opt-in `/healthz`. E2E each. |
 | L5 | K10, K11, M1, M3 | Deployment: musl release build script, systemd unit + `ExecStartPre` check, numbered install/update/restore runbook, P8 wiring docs (Uptime Kuma, Grafana), release workflow. Restore drill on scratch. |
+| L6 | W6 | Bridge `/metrics` (added at ratification 2026-08-29: Kenny raised W6 Later → Desired): Prometheus delivered/nacked counters per route on the W4 socket. E2E: counters move on delivery and on nack. |
 
 Order rationale: config before pump (the pump is unrunnable without
 it), failure semantics before convenience features, packaging last
@@ -32,6 +33,7 @@ when the binary's shape is settled.
 | L3 | done 2026-08-29 — hub stop/start drill (one transition line, auto-recovery) + SIGTERM mid-delivery exits zero |
 | L4 | done 2026-08-29 — kyu.events route (sweeper event E2E), W3 policy PUT with values-in-force log, /healthz |
 | L5 | done 2026-08-29 — static musl artifact, systemd unit, release workflow (E2Es the shipped artifact), runbook; restore-from-zero drill DRILL-OK on scratch (dead letter → warning webhook via the musl binary, acked, clean stop) |
+| L6 | done 2026-08-29 — /metrics on the observation socket; `l6_w6_counters_move_on_delivery_and_on_nack` green |
 
 ## Gate log (from Phase 7 onward; standing rule 5)
 

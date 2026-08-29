@@ -21,8 +21,10 @@ src/hub.rs       kyu client: next/ack/nack/put_policy, raw mode
 src/webhook.rs   HA client: POST with redirect::Policy::none (AR17),
                  connect-class vs status classification; the bare TCP
                  probe for the circuit breaker
-src/health.rs    opt-in /healthz (W4/AR10): hand-rolled HTTP, bounded
-                 (timeouts, semaphore, accept backoff — F2)
+src/health.rs    opt-in observation socket (W4/AR10 + W6): /healthz
+                 (route states) and /metrics (Prometheus counters),
+                 hand-rolled HTTP, bounded (timeouts, semaphore,
+                 accept backoff — F2)
 ```
 
 Tests: `tests/support/mod.rs` spawns a **real** hub (binary or docker

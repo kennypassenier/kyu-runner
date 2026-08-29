@@ -191,6 +191,7 @@ impl RouteRunner {
                     {
                         DeliverEnd::Delivered => {
                             self.settle_ack(&name, &message).await;
+                            self.health.count_delivered(&name);
                             self.health.set(&name, "idle");
                         }
                         DeliverEnd::Shutdown => {
@@ -368,6 +369,7 @@ impl RouteRunner {
     }
 
     async fn settle_nack(&self, name: &str, id: &str) {
+        self.health.count_nacked(name);
         if let Err(error) = self
             .hub
             .nack(&self.route.topic, &self.route.subscription, id)
