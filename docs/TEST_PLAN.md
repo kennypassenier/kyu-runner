@@ -73,6 +73,10 @@ suite run with `KYU_BIN=""`), the restore-from-zero drill with the
 musl artifact (DRILL-OK), `kyu.events` pre-exists on a fresh hub,
 poison-pill nacks emit **no** event (engine-read + measured — the K6
 test uses the sweeper path deliberately), hub `wait` is in seconds,
-policy PUT fails on a fresh subscription. Still argued, queued as Q9:
-everything under "FakeHa cannot express", and the static-pie binary
-running on LXC 109's kernel.
+policy PUT fails on a fresh subscription. Measured 2026-08-30 in the scratch-LXC drill (LXC 191): the static-pie
+musl artifact runs on a real unprivileged LXC, the hardened unit
+starts clean there, and the full runbook §1 chain (install → policy in
+force → dead-letter event → webhook hit → LAN metrics) held on real
+infrastructure. Still argued, queued as Q9: only what needs the real
+Home Assistant — the 200-for-unknown-webhook-ids behaviour and whether
+the automation sees the `kyu-*` headers.

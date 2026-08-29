@@ -1,9 +1,10 @@
 # Operations runbook — hub-bridge
 
 Numbered procedures. Written at L5, re-validated in Phase 8. The
-deployment target is LXC 109 (`10.10.10.9`), where the kyu hub
-already runs as a native binary under systemd; the bridge follows the
-same pattern.
+deployment target is **an LXC on the Proxmox host — which one is
+Kenny's still-open call** (`<target-lxc>` below). The kyu hub runs on
+LXC 109 (`10.10.10.9`) as a native binary under systemd; the bridge
+follows the same pattern, wherever it lands.
 
 Reality checks baked into these procedures (from the Phase 4 critic):
 
@@ -19,20 +20,27 @@ Reality checks baked into these procedures (from the Phase 4 critic):
   only — no mDNS/Avahi. Use router-DNS names or IPs in
   `webhook_url`, never a `.local` name.
 
-## 1 · Install on LXC 109
+## 1 · Install on the target LXC
+
+> Which LXC is deliberately still Kenny's call (ratification form 2);
+> the procedure below is LXC-agnostic and was drilled end-to-end on a
+> scratch LXC (191) on 2026-08-30. Drill finding: the debian-13
+> template ships **without curl** — the read-back steps below show the
+> python3 alternative that is always present:
+> `python3 -c 'import urllib.request;print(urllib.request.urlopen("http://127.0.0.1:8080/healthz",timeout=3).read().decode())'`
 
 1. Build or download the artifact:
    - from a release: download `hub-bridge-x86_64-linux-musl` +
      `SHA256SUMS` from the GitHub release, then `sha256sum -c SHA256SUMS`;
    - or locally: `scripts/build-release.sh` (same artifact + manifest).
 2. Copy it in place:
-   `scp hub-bridge-x86_64-linux-musl root@10.10.10.9:/usr/local/bin/hub-bridge`
+   `scp hub-bridge-x86_64-linux-musl root@<target-lxc>:/usr/local/bin/hub-bridge`
    and `chmod 755 /usr/local/bin/hub-bridge`.
 3. **HA side first (K6):** create the webhook automation(s) in HA for
    every route you are about to enable — see §6. Every webhook trigger
    sets `local_only: true`.
 4. Mint the app token: hub dashboard → `/apps` → register
-   `hub-bridge` → copy the token. On LXC 109 (the `read -rs` keeps the
+   `hub-bridge` → copy the token. On the target LXC (the `read -rs` keeps the
    token out of the shell history — standing rule 10):
    ```
    install -m 600 /dev/null /etc/hub-bridge/token.env
@@ -87,9 +95,9 @@ The bridge's full state is: the binary (releases), the config + unit
    open on a token-protected hub.
 2. **Uptime Kuma → bridge (optional, W4):** uncomment
    `healthz_listen` in the config — bind the address Kuma actually
-   probes (`10.10.10.9:8081`), or leave it commented out when unused:
+   probes (`<target-lxc>:8081`), or leave it commented out when unused:
    any LAN device can reach an open listener, and less surface is less
-   surface. Restart, add a monitor on `http://10.10.10.9:8081/healthz`.
+   surface. Restart, add a monitor on `http://<target-lxc>:8081/healthz`.
    Without it, a dead bridge still surfaces via the hub's
    idle-subscription flag and the `kyu.events` route.
 3. **Grafana → sweeper alert:** the hub's `/metrics` exposes
