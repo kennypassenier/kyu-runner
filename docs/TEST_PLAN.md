@@ -41,7 +41,8 @@ gap audit; the two CLI-surface tests are tagged W2).
 
 ## Not covered, by decision (pending Kenny's ratification, Q11)
 
-1. **Hub-restart drill under docker (CI):** `l3_k7` returns early
+1. **Hub-restart drill under docker (CI):**
+   `l3_k7_a_hub_outage_is_one_log_line_and_recovery_is_automatic` returns early
    when only the docker image is available (a removed container keeps
    no state) — CI green does not include the K7 drill; the drill's
    evidence is the dev-machine run. A cached hub binary in CI would

@@ -21,5 +21,12 @@ presented on Kenny's return. Nothing here is frozen until ratified.
 | Q11 | Phase 7 · gap decision form | The test-gap audit found 20 gaps; 14 were CLOSED during the AFK build (see the gate log), the remaining 6 are provisionally **Accepted as known limitation** and listed verbatim in TEST_PLAN.md "not covered, by decision" — Kenny re-decides each (Dichten · Accepteren · Later) in the ratification round | TEST_PLAN.md |
 | Q12 | Phase 7 · security findings | The interim security pass found 12 findings (0 critical/high). All code-level fixes landed (body cap F1, healthz hardening F2, SHA-pinned workflows F3, log sanitisation F4, id validation F5, real URL parsing F6, policy JSON constraints F7, runbook token hygiene F8, systemd hardening F9, bind guidance F12). Ratification covers the chosen limits (16 MiB default cap, 16 healthz connections, MemoryMax=128M) | gate log + commit history |
 
-Deviations from frozen decisions during the build: **none yet** — this
-line is updated the moment one occurs (quarantine + queue, per L2).
+| Q13 | Phase 8 · document approval | USER_GUIDE, DEBUGGING_GUIDE, ARCHITECTURE_REFERENCE written from code/tests; OPERATIONS_RUNBOOK and TEST_PLAN from Phases 5-7; README honesty pass done. Every "Proven by" test name mechanically diffed against the real test functions (rule 11a): zero missing. Kenny approves per document (Approve · Adjust · Rewrite) with spot-checks | docs/ |
+
+Deviations from frozen decisions during the build: **none** — nothing
+was frozen beyond the Phase 0 scope, which was followed as approved;
+every other decision is provisional-by-design and queued above.
+
+**Phase 9/10 are deliberately NOT started:** "Tag & release?" is
+always Kenny's explicit go (procedure), the GitHub remote is Q8, and
+the retrospective is a two-way form.

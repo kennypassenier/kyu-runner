@@ -9,8 +9,20 @@ machinery works *for* the HA delivery. The bridge holds no state: the
 hub owns every cursor, and killing the bridge at any moment loses
 nothing.
 
-Status: in development under the dev procedure. Documentation is
-written in Phase 8; until then `docs/` holds the phase documents.
+Built and hardened under the dev procedure; not yet released or
+deployed (the release tag and the LXC 109 rollout wait for Kenny's
+explicit go — see `docs/PENDING_MINI_ROUNDS.md` for everything queued
+from the AFK build).
+
+## Documentation
+
+| Doc | What it answers |
+|---|---|
+| [docs/USER_GUIDE.md](docs/USER_GUIDE.md) | what each feature does, config examples, every claim with its proving test |
+| [docs/OPERATIONS_RUNBOOK.md](docs/OPERATIONS_RUNBOOK.md) | numbered install / update / restore / monitoring procedures for LXC 109 |
+| [docs/DEBUGGING_GUIDE.md](docs/DEBUGGING_GUIDE.md) | log lines, symptom→cause table, /healthz states |
+| [docs/ARCHITECTURE_REFERENCE.md](docs/ARCHITECTURE_REFERENCE.md) | the system as built: route loop, timing model, supervision |
+| [docs/TEST_PLAN.md](docs/TEST_PLAN.md) | what the 57 tests prove, what the doubles cannot express, gaps accepted by decision |
 
 ## Development setup (one-time per clone)
 
