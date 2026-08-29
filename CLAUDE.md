@@ -1,9 +1,9 @@
 # hub-bridge
 
 A stateless Rust daemon that lets Home Assistant consume from the
-mailbox hub: long-poll configured topics, forward each message to an
+kyu hub: long-poll configured topics, forward each message to an
 HA webhook, ack only on HA's 2xx — so the hub's retry → dead-letter
-machinery works for the HA delivery. Implements P1 + P8 of the Mailbox
+machinery works for the HA delivery. Implements P1 + P8 of the Kyu
 Integration Study.
 
 This project follows the dev procedure in `~/Projects/dev-procedure/`
@@ -50,6 +50,6 @@ Enforced twice over: `.githooks/pre-commit` + `.githooks/commit-msg`
 ## Scratch hub for development/tests
 
 Tests spawn a local hub themselves (see `tests/support/`): the binary
-at `MAILBOX_BIN` (default: `~/Projects/mailbox/target/release/mailbox`)
-or the public `ghcr.io/kennypassenier/mailbox` image in CI. Never
+at `KYU_BIN` (default: `~/Projects/kyu/target/release/kyu`)
+or the public `ghcr.io/kennypassenier/kyu` image in CI. Never
 `10.10.10.9:8080`.

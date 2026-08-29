@@ -7,15 +7,15 @@ kept for traceability back to that gate.
 ## What this is
 
 A small stateless Rust daemon that makes Home Assistant able to
-**consume** from the mailbox hub. HA can already produce trivially
+**consume** from the kyu hub. HA can already produce trivially
 (`rest_command` → `POST /t/<topic>`), but nothing in HA long-polls;
 the bridge is the missing pump. It implements proposals **P1**
-(hub-bridge) and **P8** (hub self-monitoring) of the Mailbox
+(hub-bridge) and **P8** (hub self-monitoring) of the Kyu
 Integration Study (`~/ObsidianVault/Home Assistant/Documentation/
-Mailbox Integration Study.md`), both rated Essential by Kenny on
+Kyu Integration Study.md`), both rated Essential by Kenny on
 2026-08-28.
 
-The mailbox interface authority is `~/Projects/mailbox/docs/USER_GUIDE.md`
+The kyu interface authority is `~/Projects/kyu/docs/USER_GUIDE.md`
 (v1.0.x, the three-verb HTTP contract).
 
 ## Goals
@@ -27,11 +27,11 @@ The mailbox interface authority is `~/Projects/mailbox/docs/USER_GUIDE.md`
   2xx answer from HA. On failure it nacks (or lets the lease expire),
   so the hub's retry → dead-letter machinery works *for* the HA
   delivery.
-- **G2 · P8 built in.** A shipped default route `mailbox.events` → HA
+- **G2 · P8 built in.** A shipped default route `kyu.events` → HA
   warning webhook (dead letters and archived subscriptions surface as
   house warnings, with a `click_url` to the hub dashboard), plus
   documented wiring for `/healthz` → Uptime Kuma and
-  `mailbox_sweeper_age_ms` → Grafana. The HA-side webhook automation is
+  `kyu_sweeper_age_ms` → Grafana. The HA-side webhook automation is
   delivered as a documented step of this project.
 
 ## Non-goals
@@ -40,7 +40,7 @@ The mailbox interface authority is `~/Projects/mailbox/docs/USER_GUIDE.md`
   the config file. The hub owns every position. `kill -9` at any
   moment followed by a restart loses nothing by construction.
 - **NG2 · Payload-agnostic.** Bytes in, bytes out: no parsing, no
-  validation, no transformation, no content-based routing (mailbox N5
+  validation, no transformation, no content-based routing (kyu N5
   inherited). The envelope v1 schema is a DRAFT owned by the
   pipeline-v2 project; schema changes there do not touch the bridge.
 - **NG3 · Never in a critical path.** Study §7 degradation doctrine:
@@ -72,7 +72,7 @@ The mailbox interface authority is `~/Projects/mailbox/docs/USER_GUIDE.md`
 ## Hard constraints
 
 - **R1 · Scratch hub only.** Development and tests run against a local
-  hub (the `~/Projects/mailbox` binary or its docker image). The real
+  hub (the `~/Projects/kyu` binary or its docker image). The real
   hub on LXC 109 (`http://10.10.10.9:8080`, native binary under
   systemd) is touched only as an explicitly agreed step.
 - **R2 · Rust, new repo, full dev procedure** (all 11 phases,
@@ -96,10 +96,10 @@ re-validated at Phase 1:
 | **Build `hub-bridge` (this project)** | **Chosen.** ~200 lines of logic; keeps all queue semantics (lease, retry, DLQ) working for HA delivery; ecosystem component. |
 | AppDaemon/pyscript consumer inside HA | Rejected: a second runtime bolted into HA (the house deliberately removed NetDaemon 2026-08-09); harder to test than a Rust binary under the procedure. |
 | Per-use-case mini-consumers | Right for PC endpoint consumers (desk-courier, vault-courier); wrong as the generic HA path — N daemons instead of one. |
-| Generic pipeline tools (Node-RED, Benthos/Redpanda Connect, n8n) | Rejected: none speak mailbox's lease/ack/nack protocol natively; ack-on-200 semantics would need custom code inside a much larger runtime than the thing being built. |
+| Generic pipeline tools (Node-RED, Benthos/Redpanda Connect, n8n) | Rejected: none speak kyu's lease/ack/nack protocol natively; ack-on-200 semantics would need custom code inside a much larger runtime than the thing being built. |
 | No consuming (HA produce-only) | Legitimate phase-1 posture, loses half the value; superseded by this project. |
 
-Ecosystem findings (Phase 1): consumes **mailbox** (the point of the
+Ecosystem findings (Phase 1): consumes **kyu** (the point of the
 project); **latch** is the candidate for token delivery (Phase 2 item);
 **homelab** deployment preset deliberately not used — the hub itself
 runs native under systemd on LXC 109 and the bridge follows that

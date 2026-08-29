@@ -24,10 +24,10 @@ hub_url = "http://127.0.0.1:8080"
 # so a route enabled before its automation acks warnings into the void.
 # Every HA webhook trigger for the bridge sets local_only: true.
 [[routes]]
-name = "mailbox-events"
-topic = "mailbox.events"
+name = "kyu-events"
+topic = "kyu.events"
 subscription = "ha-bridge"
-webhook_url = "http://homeassistant.lan:8123/api/webhook/hub_mailbox_events"
+webhook_url = "http://homeassistant.lan:8123/api/webhook/hub_kyu_events"
 
 # AR15: ops routes must survive long partial outages — while HA's HTTP
 # stack answers errors (not down, not up), each message burns roughly

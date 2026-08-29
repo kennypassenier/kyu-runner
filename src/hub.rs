@@ -1,6 +1,6 @@
-//! The hub side of the pump: mailbox's three verbs over plain HTTP
+//! The hub side of the pump: kyu's three verbs over plain HTTP
 //! (K2/K3 + W5 nack). Raw mode on purpose (AR4): the payload is the
-//! body, byte for byte; metadata rides in `mailbox-*` headers.
+//! body, byte for byte; metadata rides in `kyu-*` headers.
 
 use std::time::Duration;
 
@@ -26,7 +26,7 @@ pub enum HubError {
     #[error("hub answered {status}: {body}")]
     Status { status: StatusCode, body: String },
 
-    #[error("hub answered 200 without a {0} header — not a mailbox raw-mode response")]
+    #[error("hub answered 200 without a {0} header — not a kyu raw-mode response")]
     Protocol(&'static str),
 }
 
@@ -35,14 +35,14 @@ pub struct Claimed {
     pub id: String,
     pub body: Vec<u8>,
     pub content_type: Option<String>,
-    /// The `mailbox-*` metadata headers, passed through to HA (K2).
+    /// The `kyu-*` metadata headers, passed through to HA (K2).
     pub meta: Vec<(String, String)>,
 }
 
 pub enum PollOutcome {
     Message(Box<Claimed>),
     Empty,
-    /// 404 `UnknownTopic`: the topic has not been born yet — mailbox
+    /// 404 `UnknownTopic`: the topic has not been born yet — kyu
     /// creates topics on first publish. A quiet wait state (AR6/AR16).
     TopicUnborn,
     /// Security F1: the body outgrew the configured cap while being
@@ -70,7 +70,7 @@ impl HubClient {
         poll_wait: Duration,
         max_body_bytes: u64,
     ) -> anyhow::Result<Self> {
-        // The wire unit for `wait` is whole seconds (mailbox K2).
+        // The wire unit for `wait` is whole seconds (kyu K2).
         let wait_s = poll_wait.as_secs().max(1);
         let poll = Client::builder()
             .timeout(Duration::from_secs(wait_s + 10))
@@ -119,7 +119,7 @@ impl HubClient {
             StatusCode::OK => {
                 let id = match response
                     .headers()
-                    .get("mailbox-id")
+                    .get("kyu-id")
                     .and_then(|value| value.to_str().ok())
                 {
                     // Security F5: the id is interpolated into the
@@ -133,7 +133,7 @@ impl HubClient {
                     {
                         id.to_string()
                     }
-                    _ => return Err(HubError::Protocol("mailbox-id")),
+                    _ => return Err(HubError::Protocol("kyu-id")),
                 };
                 let content_type = response
                     .headers()
@@ -144,7 +144,7 @@ impl HubClient {
                     .headers()
                     .iter()
                     .filter(|(name, _)| {
-                        name.as_str().starts_with("mailbox-") && name.as_str() != "mailbox-notice"
+                        name.as_str().starts_with("kyu-") && name.as_str() != "kyu-notice"
                     })
                     .filter_map(|(name, value)| {
                         value

@@ -48,13 +48,13 @@ fn free_port() -> u16 {
 }
 
 fn hub_binary() -> Option<PathBuf> {
-    if let Ok(path) = std::env::var("MAILBOX_BIN") {
-        // MAILBOX_BIN="" forces the docker path even when the default
+    if let Ok(path) = std::env::var("KYU_BIN") {
+        // KYU_BIN="" forces the docker path even when the default
         // binary exists — how CI's environment is rehearsed locally.
         return (!path.is_empty()).then(|| PathBuf::from(path));
     }
     let default =
-        PathBuf::from(std::env::var("HOME").ok()?).join("Projects/mailbox/target/release/mailbox");
+        PathBuf::from(std::env::var("HOME").ok()?).join("Projects/kyu/target/release/kyu");
     default.exists().then_some(default)
 }
 
@@ -96,51 +96,51 @@ impl Hub {
             .expect("data dir")
             .path()
             .to_path_buf();
-        // 64 hex chars: the hub requires MAILBOX_SECRET_KEY next to the
+        // 64 hex chars: the hub requires KYU_SECRET_KEY next to the
         // token; a fixed test key is fine — nothing real is protected.
         let secret_key = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
         let process = match &self.binary {
             Some(binary) => {
                 let mut command = Command::new(binary);
                 command
-                    .env("MAILBOX_LISTEN", &listen)
-                    .env("MAILBOX_DATA_DIR", &data)
-                    .env("MAILBOX_LOG", "warn")
+                    .env("KYU_LISTEN", &listen)
+                    .env("KYU_DATA_DIR", &data)
+                    .env("KYU_LOG", "warn")
                     .stdout(Stdio::null())
                     .stderr(Stdio::null());
                 if let Some(token) = &self.token {
-                    command.env("MAILBOX_TOKEN", token);
-                    command.env("MAILBOX_SECRET_KEY", secret_key);
+                    command.env("KYU_TOKEN", token);
+                    command.env("KYU_SECRET_KEY", secret_key);
                 }
                 let child = command
                     .spawn()
-                    .expect("spawn mailbox binary (set MAILBOX_BIN or build ~/Projects/mailbox)");
+                    .expect("spawn kyu binary (set KYU_BIN or build ~/Projects/kyu)");
                 HubProcess::Binary { child }
             }
             None => {
-                let image = std::env::var("MAILBOX_IMAGE")
-                    .unwrap_or_else(|_| "ghcr.io/kennypassenier/mailbox:1.0.0".into());
+                let image = std::env::var("KYU_IMAGE")
+                    .unwrap_or_else(|_| "ghcr.io/kennypassenier/kyu:1.0.0".into());
                 let mut args: Vec<String> = vec![
                     "run".into(),
                     "-d".into(),
                     "-p".into(),
                     format!("127.0.0.1:{}:8080", self.port),
                     "-e".into(),
-                    "MAILBOX_LISTEN=0.0.0.0:8080".into(),
+                    "KYU_LISTEN=0.0.0.0:8080".into(),
                     "-e".into(),
-                    "MAILBOX_LOG=warn".into(),
+                    "KYU_LOG=warn".into(),
                 ];
                 if let Some(token) = &self.token {
                     args.push("-e".into());
-                    args.push(format!("MAILBOX_TOKEN={token}"));
+                    args.push(format!("KYU_TOKEN={token}"));
                     args.push("-e".into());
-                    args.push(format!("MAILBOX_SECRET_KEY={secret_key}"));
+                    args.push(format!("KYU_SECRET_KEY={secret_key}"));
                 }
                 args.push(image);
                 let output = Command::new("docker")
                     .args(&args)
                     .output()
-                    .expect("docker run (no MAILBOX_BIN and no docker — one is required)");
+                    .expect("docker run (no KYU_BIN and no docker — one is required)");
                 assert!(
                     output.status.success(),
                     "docker run failed: {}",
@@ -196,7 +196,7 @@ impl Hub {
         // docker is available.
         assert!(
             self.binary.is_some(),
-            "hub restart drill needs MAILBOX_BIN (skipped under docker)"
+            "hub restart drill needs KYU_BIN (skipped under docker)"
         );
         self.launch();
         self.wait_ready().await;
@@ -283,9 +283,9 @@ pub async fn poll_once_from(
         200 => {
             let id = response
                 .headers()
-                .get("mailbox-id")
+                .get("kyu-id")
                 .and_then(|value| value.to_str().ok())
-                .expect("mailbox-id")
+                .expect("kyu-id")
                 .to_string();
             let body = response.text().await.expect("body");
             Some((id, body))
@@ -324,7 +324,7 @@ pub async fn put_policy(hub: &Hub, topic: &str, subscription: &str, policy: &str
     );
 }
 
-/// The poison pill (mailbox W5): straight to the dead-letter list —
+/// The poison pill (kyu W5): straight to the dead-letter list —
 /// the quickest way to make the hub emit a `message.dead_lettered`
 /// event for the K6 test.
 pub async fn nack_dead(hub: &Hub, topic: &str, subscription: &str, id: &str) {
@@ -355,7 +355,7 @@ pub async fn get_policy(hub: &Hub, topic: &str, subscription: &str) -> String {
 
 /// True once the subscription exists on the hub (its policy endpoint
 /// answers 200) — the deterministic "has the bridge polled yet?" probe
-/// for topics that already exist at hub start (e.g. mailbox.events).
+/// for topics that already exist at hub start (e.g. kyu.events).
 pub async fn subscription_exists(hub: &Hub, topic: &str, subscription: &str) -> bool {
     reqwest::Client::new()
         .get(format!(

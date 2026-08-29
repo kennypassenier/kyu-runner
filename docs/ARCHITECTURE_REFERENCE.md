@@ -15,7 +15,7 @@ src/route.rs     the pump state machine: one loop per route (AR2),
                  outcome handling (AR3), circuit breaker (AR15),
                  birth replay (AR16), transition logging (AR6),
                  policy application (W3)
-src/hub.rs       mailbox client: next/ack/nack/put_policy, raw mode
+src/hub.rs       kyu client: next/ack/nack/put_policy, raw mode
                  (AR4), body cap (F1), id validation (F5), log
                  sanitisation (F4)
 src/webhook.rs   HA client: POST with redirect::Policy::none (AR17),
@@ -91,14 +91,14 @@ makes that safe). Exit code 0 on an orderly stop.
 
 - **AR1** `main.rs::supervise` · **AR2/AR3** `route.rs::run` +
   `deliver_with_budget` · **AR4** `hub.rs::next` (raw mode, header
-  passthrough minus `mailbox-notice`) · **AR5** `config.rs::lease_budget`
+  passthrough minus `kyu-notice`) · **AR5** `config.rs::lease_budget`
   + the K8 check · **AR6** the state booleans + `note_recovery` in
   `route.rs` · **AR7** token env in `main.rs`, `bearer_auth` in
   `hub.rs` · **AR8** `config.rs` schema · **AR9** derived grace in
   `config.rs::shutdown_grace` + the join loop in `main.rs::run` ·
   **AR10** `health.rs` · **AR11** no TLS stack compiled in (reqwest
   `default-features = false`) + K8 refusing non-http URLs · **AR12**
-  the module map above · **AR13** no dedup anywhere, `mailbox-id`
+  the module map above · **AR13** no dedup anywhere, `kyu-id`
   forwarded as the consumer-side key · **AR14** payloads never
   formatted into log lines; hub-controlled text passes
   `hub.rs::printable` · **AR15** the circuit arm in `route.rs` +

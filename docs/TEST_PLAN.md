@@ -26,16 +26,16 @@ gap audit; the two CLI-surface tests are tagged W2).
   reason dead letters catch transport failure but never misrouting;
   the runbook's per-route smoke test is the control, and measuring the
   real behaviour is queued (Q9); (2) HA's webhook trigger processing
-  (does the automation see the `mailbox-*` headers? — Q9); (3) HA's
+  (does the automation see the `kyu-*` headers? — Q9); (3) HA's
   restart timing. Everything transport-side (status codes, redirects,
   slow responses, connection refusal, binary bodies) it expresses
   faithfully and is covered.
-- **The hub is never mocked** — every E2E runs a real mailbox process.
+- **The hub is never mocked** — every E2E runs a real kyu process.
   Consequence, accepted: hub behaviours the real hub will not produce
   on demand are untestable here: `HubError::Protocol` (a 200 without
-  a valid `mailbox-id`) and hub 5xx answers have no test, and the
+  a valid `kyu-id`) and hub 5xx answers have no test, and the
   malicious-hub scenarios (forged headers, streaming oversize bodies
-  beyond `MAILBOX_MAX_BODY_BYTES`) are covered by code paths (cap,
+  beyond `KYU_MAX_BODY_BYTES`) are covered by code paths (cap,
   sanitisation, charset checks) whose hostile halves are argued, not
   executed. Recorded as the price of rule 9.
 
@@ -69,8 +69,8 @@ gap audit; the two CLI-surface tests are tagged W2).
 ## Reasoned vs measured (Phase 7 sweep)
 
 Measured this build: docker harness path + pinned public image (full
-suite run with `MAILBOX_BIN=""`), the restore-from-zero drill with the
-musl artifact (DRILL-OK), `mailbox.events` pre-exists on a fresh hub,
+suite run with `KYU_BIN=""`), the restore-from-zero drill with the
+musl artifact (DRILL-OK), `kyu.events` pre-exists on a fresh hub,
 poison-pill nacks emit **no** event (engine-read + measured — the K6
 test uses the sweeper path deliberately), hub `wait` is in seconds,
 policy PUT fails on a fresh subscription. Still argued, queued as Q9:

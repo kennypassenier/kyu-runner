@@ -23,7 +23,7 @@ jobs:
         run: cargo build --release --target x86_64-unknown-linux-musl
       - name: E2E the released artifact (the shipped binary is the tested binary)
         env:
-          MAILBOX_IMAGE: ghcr.io/kennypassenier/mailbox@sha256:404cf27409f28fc3aadd00a5cf027c239b4e99c5c516681fabd99f9ce7beaea9 # 1.0.0
+          KYU_IMAGE: ghcr.io/kennypassenier/kyu@sha256:404cf27409f28fc3aadd00a5cf027c239b4e99c5c516681fabd99f9ce7beaea9 # 1.0.0
           BRIDGE_BIN: target/x86_64-unknown-linux-musl/release/hub-bridge
         run: cargo test --test l1_check_config --test l2_pump --test l4_extras
       - name: Package with checksum manifest

@@ -1,5 +1,5 @@
 # The one Rust this project builds with, here and in CI (standing rule
-# 7: a gate that does not predict the build is not a gate — mailbox
+# 7: a gate that does not predict the build is not a gate — kyu
 # shipped a red commit because local clippy was 1.97 and CI's was 1.98).
 # Raising it is a deliberate act: bump this channel and Cargo.toml's
 # rust-version together, run the gates, fix what the newer clippy found.

@@ -6,7 +6,7 @@ is proven.
 
 **If you have three minutes:** the bridge is a stateless pump. You
 give it routes — `{topic, subscription, webhook_url}` — in one TOML
-file. Per route it long-polls the mailbox hub, POSTs each message
+file. Per route it long-polls the kyu hub, POSTs each message
 byte-for-byte to the Home Assistant webhook, and acks **only** when HA
 answers 2xx. Everything else (retries, backoff, dead letters) is the
 hub's machinery, kept working *for* the HA delivery. Kill the bridge
@@ -22,10 +22,10 @@ whenever you like; the hub owns every cursor.
 hub_url = "http://127.0.0.1:8080"
 
 [[routes]]
-name = "mailbox-events"          # the log/health handle, unique
-topic = "mailbox.events"
+name = "kyu-events"          # the log/health handle, unique
+topic = "kyu.events"
 subscription = "ha-bridge"
-webhook_url = "http://homeassistant.lan:8123/api/webhook/hub_mailbox_events"
+webhook_url = "http://homeassistant.lan:8123/api/webhook/hub_kyu_events"
 ```
 
 Routes run concurrently and independently: one route's dead webhook
@@ -39,8 +39,8 @@ in flight — that is what keeps a backlog draining in publish order.
 
 The payload reaches HA exactly as it was published — bytes, not a
 string round-trip — with the original `content-type` and the
-`mailbox-id`, `mailbox-topic`, `mailbox-attempt` and
-`mailbox-published-at` headers passed through. The bridge never parses
+`kyu-id`, `kyu-topic`, `kyu-attempt` and
+`kyu-published-at` headers passed through. The bridge never parses
 a payload (scope NG2): the envelope schema is somebody else's contract.
 
 **Proven by:** `l2_k1_k2_k3_ar16_the_pump_delivers_byte_for_byte_and_acks`,
@@ -246,7 +246,7 @@ exits immediately — safe, because unacked messages redeliver.
 The second-signal path is by construction, not separately tested —
 see TEST_PLAN.md.
 
-### K6 · The shipped mailbox.events route · K10/K11 · Deployment
+### K6 · The shipped kyu.events route · K10/K11 · Deployment
 
 `deploy/config.toml` ships the P8 route (hub events → HA warning
 webhook) and `deploy/hub-bridge.service` the hardened unit;

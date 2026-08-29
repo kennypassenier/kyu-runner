@@ -1,4 +1,4 @@
-// L2 · the pump (K1-K5) end-to-end: a real mailbox hub (scratch), a
+// L2 · the pump (K1-K5) end-to-end: a real kyu hub (scratch), a
 // fake HA webhook server, the bridge as a real process. Scenario names
 // carry the scope's S-ids.
 
@@ -37,8 +37,8 @@ async fn l2_k1_k2_k3_ar16_the_pump_delivers_byte_for_byte_and_acks() {
     assert_eq!(hit.body_str(), payload, "byte-for-byte (K2/NG2)");
     assert_eq!(hit.content_type.as_deref(), Some("application/json"));
     let names: Vec<&str> = hit.headers.iter().map(|(name, _)| name.as_str()).collect();
-    assert!(names.contains(&"mailbox-id"), "metadata passes through");
-    assert!(names.contains(&"mailbox-attempt"));
+    assert!(names.contains(&"kyu-id"), "metadata passes through");
+    assert!(names.contains(&"kyu-attempt"));
 
     // Acked on the hub (K3): once the bridge is gone, the subscription
     // has nothing pending — an unacked message would come back.
@@ -79,7 +79,7 @@ async fn l2_s1_a_500_from_ha_is_not_acked_and_the_message_returns() {
         ha.hits().iter().any(|hit| {
             hit.headers
                 .iter()
-                .any(|(name, value)| name == "mailbox-attempt" && value == "2")
+                .any(|(name, value)| name == "kyu-attempt" && value == "2")
         }) && bridge.log().contains("delivered and acked")
     })
     .await;
@@ -138,7 +138,7 @@ async fn l2_s2_ar15_an_outage_accumulates_unclaimed_and_drains_in_order() {
         let attempt = hit
             .headers
             .iter()
-            .find(|(name, _)| name == "mailbox-attempt")
+            .find(|(name, _)| name == "kyu-attempt")
             .map(|(_, value)| value.clone())
             .unwrap();
         assert_eq!(attempt, "1", "no attempt burn while the circuit was open");
@@ -370,10 +370,10 @@ async fn l2_k2_ar4_a_binary_payload_survives_byte_for_byte() {
         Some("application/octet-stream")
     );
     // Gap audit #4: all four metadata headers, not a spot check (AR4).
-    assert_eq!(hit.header("mailbox-topic"), Some(topic));
-    assert!(hit.header("mailbox-id").is_some());
-    assert!(hit.header("mailbox-attempt").is_some());
-    assert!(hit.header("mailbox-published-at").is_some());
+    assert_eq!(hit.header("kyu-topic"), Some(topic));
+    assert!(hit.header("kyu-id").is_some());
+    assert!(hit.header("kyu-attempt").is_some());
+    assert!(hit.header("kyu-published-at").is_some());
 }
 
 #[tokio::test]

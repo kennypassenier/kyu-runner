@@ -3,11 +3,11 @@
 # is the source of truth (M3); deploy to /etc/systemd/system/.
 
 [Unit]
-Description=hub-bridge - mailbox to Home Assistant webhook pump
+Description=hub-bridge - kyu to Home Assistant webhook pump
 # After, not Requires: the hub must be restartable on its own, and the
 # bridge reconnects by itself (K7). The ordering only makes a cold boot
 # start the hub first so the W3 policy PUTs land on the first try.
-After=network-online.target mailbox.service
+After=network-online.target kyu.service
 Wants=network-online.target
 
 [Service]

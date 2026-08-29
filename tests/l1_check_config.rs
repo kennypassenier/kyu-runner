@@ -25,10 +25,10 @@ const VALID: &str = r#"
 hub_url = "http://127.0.0.1:8080"
 
 [[routes]]
-name = "mailbox-events"
-topic = "mailbox.events"
+name = "kyu-events"
+topic = "kyu.events"
 subscription = "ha-bridge"
-webhook_url = "http://ha.lan:8123/api/webhook/hub_mailbox_events"
+webhook_url = "http://ha.lan:8123/api/webhook/hub_kyu_events"
 "#;
 
 #[test]

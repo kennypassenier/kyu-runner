@@ -5,7 +5,7 @@
 set -euo pipefail
 cd "${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel)}"
 
-# Standing rule 7 (mailbox retro 2026-08-28): a gate that lets the tree
+# Standing rule 7 (kyu retro 2026-08-28): a gate that lets the tree
 # change while it runs is green locally and wrong in the commit — cargo
 # rewrites Cargo.lock, and anything rewritten after `git add` is absent
 # from what gets committed. Snapshot before, compare after.

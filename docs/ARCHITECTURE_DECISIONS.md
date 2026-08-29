@@ -13,10 +13,10 @@ Phases 3-4 output. T = tech choice, AR = architecture.
 
 - **T1 · Language & toolchain.** Rust, edition 2024, toolchain pinned
   to **1.97** via `rust-toolchain.toml` (standing rule 7: the gate must
-  predict the build; matches mailbox and this machine). `rust-version`
+  predict the build; matches kyu and this machine). `rust-version`
   in Cargo.toml stays in lockstep.
 - **T2 · Runtime: tokio** (`rt-multi-thread`, `macros`, `signal`,
-  `time`). House standard (mailbox, homelab); gives clean per-route
+  `time`). House standard (kyu, homelab); gives clean per-route
   concurrency, timeouts and cancellation. The alternative (ureq +
   threads) was weighed: fewer deps, but blocking threads parked in
   30-second long-polls make graceful shutdown (W1) and per-route
@@ -24,7 +24,7 @@ Phases 3-4 output. T = tech choice, AR = architecture.
 - **T3 · HTTP client: reqwest** with `default-features = false` — no
   TLS stack at all: the hub and HA are plain-HTTP LAN peers (hub N3),
   and a TLS stack that exists is a TLS stack to patch. Same choice
-  mailbox's own test suite makes.
+  kyu's own test suite makes.
 - **T4 · Config: serde + toml**, `deny_unknown_fields` everywhere — a
   typo'd key is a startup error with a remedy, never silently ignored
   (standing rule 12: no silent fallbacks).
@@ -36,7 +36,7 @@ Phases 3-4 output. T = tech choice, AR = architecture.
   remedy (standing rule 11).
 - **T7 · Dependency policy: reluctant, policed.** Each direct
   dependency justified in the commit that adds it; **cargo-deny** in CI
-  (advisories, licenses, duplicates) — mailbox's regime.
+  (advisories, licenses, duplicates) — kyu's regime.
 - **T8 · Platform & targets.** Dev + CI: `x86_64-unknown-linux-gnu`.
   Release artifact: **`x86_64-unknown-linux-musl`, statically linked** —
   LXC 109's libc is not this Arch machine's libc, and a static binary
@@ -44,7 +44,7 @@ Phases 3-4 output. T = tech choice, AR = architecture.
   no sqlite here). ⚠ The procedure requires the platform question to be
   put to Kenny as an OPEN question — queued; the working assumption is
   "LXC 109 only".
-- **T9 · License:** MIT OR Apache-2.0, like mailbox.
+- **T9 · License:** MIT OR Apache-2.0, like kyu.
 
 ## Architecture (Phase 4)
 
@@ -77,17 +77,17 @@ Phases 3-4 output. T = tech choice, AR = architecture.
   message back to the hub's backoff/retry/DLQ machinery (K4). A
   connect-class failure additionally opens the route's circuit
   breaker (AR15). If the nack itself fails (hub vanished mid-settle),
-  do nothing: the lease expiry redelivers (mailbox K5). The bridge
+  do nothing: the lease expiry redelivers (kyu K5). The bridge
   never sends a poison pill — payload-agnostic code cannot judge
   payloads. ⚔ *Critic (adopted):* with hub defaults (5 attempts,
   linear 1 s backoff) the draft's nack-per-failure dead-lettered every
   message ~10-15 s into an HA outage — a routine HA update would have
   killed the entire backlog on every route.
 - **AR4 · Raw mode, not `envelope=json`.** The payload arrives as the
-  raw body with metadata in `mailbox-*` response headers; the bridge
+  raw body with metadata in `kyu-*` response headers; the bridge
   forwards body + `content-type` byte-for-byte and passes the
-  `mailbox-id`, `mailbox-topic`, `mailbox-attempt`,
-  `mailbox-published-at` headers through on the webhook POST. No
+  `kyu-id`, `kyu-topic`, `kyu-attempt`,
+  `kyu-published-at` headers through on the webhook POST. No
   re-encoding, no double-JSON.
 - **AR5 · Timeouts and the lease budget.** Long-poll `wait` = 25 s
   (config in ms, sent to the hub in whole seconds — the wire unit;
@@ -111,7 +111,7 @@ Phases 3-4 output. T = tech choice, AR = architecture.
   (401 — the hub is up but the token is missing/revoked; one line
   with the `/apps` remedy, retried with backoff, not a flood every
   25 s). A poll answering 404 (`UnknownTopic` — the topic has not
-  been born yet; mailbox creates topics on first publish) is a
+  been born yet; kyu creates topics on first publish) is a
   **quiet wait state**: one transition line, a 5 s re-poll, no error
   spam.
 - **AR7 · Token.** `HUB_BRIDGE_TOKEN` from the environment, injected
@@ -134,10 +134,10 @@ Phases 3-4 output. T = tech choice, AR = architecture.
   webhook_timeout_ms = 10000
 
   [[routes]]
-  name = "mailbox-events"             # required, unique; the log/health handle
-  topic = "mailbox.events"
+  name = "kyu-events"             # required, unique; the log/health handle
+  topic = "kyu.events"
   subscription = "ha-bridge"
-  webhook_url = "http://homeassistant.lan:8123/api/webhook/hub_mailbox_events"
+  webhook_url = "http://homeassistant.lan:8123/api/webhook/hub_kyu_events"
   # webhook_timeout_ms = 5000         # per-route override
   # [routes.policy]                   # W3: applied to the hub at startup
   # max_attempts = 10
@@ -168,7 +168,7 @@ Phases 3-4 output. T = tech choice, AR = architecture.
   (standing rule 9); each mock's inexpressible behaviours are named in
   TEST_PLAN.md.
 - **AR13 · No dedup, by decision.** At-least-once reaches HA
-  (mailbox N4); the `mailbox-id` header gives HA automations a
+  (kyu N4); the `kyu-id` header gives HA automations a
   correlation key if a consumer ever needs to suppress duplicates.
   Idempotency lives consumer-side (study §7).
 - **AR14 · Payload log hygiene.** Payloads never reach a log line —
@@ -191,7 +191,7 @@ Phases 3-4 output. T = tech choice, AR = architecture.
   documented (≈1 attempt per message per lease budget; W3 raises
   `max_attempts` on routes that must survive long partial outages).
 - **AR16 · Topic-birth replay** *(added from the critic pass)*.
-  mailbox creates a topic on first publish and a subscription on its
+  kyu creates a topic on first publish and a subscription on its
   first poll, and a subscription only sees what follows its creation —
   so the first message on a brand-new topic would fall between the
   bridge's 404 and its next poll, permanently. Therefore: after a

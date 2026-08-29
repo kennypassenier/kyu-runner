@@ -138,7 +138,7 @@ impl RouteRunner {
                     if !unborn_logged {
                         info!(
                             route = %name, topic = %topic,
-                            "topic not born yet (mailbox creates topics on first publish) — \
+                            "topic not born yet (kyu creates topics on first publish) — \
                              waiting quietly; its first messages will be replayed from the \
                              beginning once it appears (AR16)"
                         );
@@ -375,7 +375,7 @@ impl RouteRunner {
         {
             debug!(
                 route = %name, id = %id, %error,
-                "nack failed — the lease will expire and redeliver on its own (mailbox K5)"
+                "nack failed — the lease will expire and redeliver on its own (kyu K5)"
             );
         }
     }

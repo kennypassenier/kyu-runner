@@ -1,7 +1,7 @@
 # hub-bridge
 
 A stateless daemon that lets Home Assistant consume from the
-[mailbox](https://github.com/kennypassenier/mailbox) hub. Per
+[kyu](https://github.com/kennypassenier/kyu) hub. Per
 configured route it long-polls a topic subscription, POSTs each
 message byte-for-byte to a Home Assistant webhook, and acknowledges
 **only** when HA answers 2xx — so the hub's lease/retry/dead-letter
@@ -36,8 +36,8 @@ Every commit then runs format check, clippy (warnings are errors) and
 the full test suite, and requires feature IDs in the message
 (`[K3, AR2]` or `[meta]`). CI re-runs the same gates on every push.
 
-Tests spawn a local scratch hub: set `MAILBOX_BIN` to a mailbox binary
-(default: `~/Projects/mailbox/target/release/mailbox` if present) or
-have docker available (`MAILBOX_IMAGE`, default
-`ghcr.io/kennypassenier/mailbox:1.0.0`). The real hub is never
+Tests spawn a local scratch hub: set `KYU_BIN` to a kyu binary
+(default: `~/Projects/kyu/target/release/kyu` if present) or
+have docker available (`KYU_IMAGE`, default
+`ghcr.io/kennypassenier/kyu:1.0.0`). The real hub is never
 touched by tests.

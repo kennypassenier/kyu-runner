@@ -1,7 +1,7 @@
 # Operations runbook — hub-bridge
 
 Numbered procedures. Written at L5, re-validated in Phase 8. The
-deployment target is LXC 109 (`10.10.10.9`), where the mailbox hub
+deployment target is LXC 109 (`10.10.10.9`), where the kyu hub
 already runs as a native binary under systemd; the bridge follows the
 same pattern.
 
@@ -11,7 +11,7 @@ Reality checks baked into these procedures (from the Phase 4 critic):
   A route whose HA automation does not exist yet acks messages into
   the void with healthy metrics. Order is therefore always:
   *automation first, route second, smoke test third.*
-- **A policy write replaces every field** (mailbox K7). The
+- **A policy write replaces every field** (kyu K7). The
   `[routes.policy]` block in git is the whole policy: any tweak made
   on the hub dashboard is reverted the next time the bridge starts.
   Change policies in `deploy/config.toml`, not on the dashboard.
@@ -91,13 +91,13 @@ The bridge's full state is: the binary (releases), the config + unit
    any LAN device can reach an open listener, and less surface is less
    surface. Restart, add a monitor on `http://10.10.10.9:8081/healthz`.
    Without it, a dead bridge still surfaces via the hub's
-   idle-subscription flag and the `mailbox.events` route.
+   idle-subscription flag and the `kyu.events` route.
 3. **Grafana → sweeper alert:** the hub's `/metrics` exposes
-   `mailbox_sweeper_age_ms` — the one series that catches the hub
+   `kyu_sweeper_age_ms` — the one series that catches the hub
    *hanging* rather than dying. Alert when it exceeds 60 000 for
    5 minutes.
 4. **Dead letters → HA warnings:** that is the shipped
-   `mailbox-events` route (K6) — smoke test it like any route.
+   `kyu-events` route (K6) — smoke test it like any route.
 
 ## 5 · Adding, renaming or removing a route
 
@@ -113,19 +113,19 @@ The bridge's full state is: the binary (releases), the config + unit
    quietly and replays its birth messages automatically, AR16.)
 3. **Renaming/removing:** the old subscription stays behind on the
    hub, pins retention for up to 30 days, then archives as `lapsed`
-   (mailbox K11). Archive it yourself on the topic's dashboard page
+   (kyu K11). Archive it yourself on the topic's dashboard page
    the same day instead — a deliberate goodbye beats a 30-day flag.
 
 ## 6 · The HA-side automation (K6 reference shape)
 
-One automation per webhook route. For the shipped `mailbox-events`
+One automation per webhook route. For the shipped `kyu-events`
 route:
 
 ```yaml
 alias: "Hub: dead letter warning"
 triggers:
   - trigger: webhook
-    webhook_id: hub_mailbox_events   # matches deploy/config.toml
+    webhook_id: hub_kyu_events   # matches deploy/config.toml
     allowed_methods: [POST]
     local_only: true                 # capability token stays LAN-only
 conditions:
@@ -136,7 +136,7 @@ conditions:
 actions:
   - action: script.notification_dispatch
     data:
-      title: "Mailbox: dode brief"
+      title: "Kyu: dode brief"
       message: >-
         {{ trigger.json.event }} op topic {{ trigger.json.topic }}
       priority: warning
@@ -144,6 +144,6 @@ actions:
 ```
 
 Field names under `trigger.json.*` follow the hub's event payloads
-(mailbox W11); adjust to the dispatcher's real parameters when wiring
+(kyu W11); adjust to the dispatcher's real parameters when wiring
 (the notification system's own documentation is the authority for the
 `script.notification_dispatch` contract).

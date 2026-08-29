@@ -1,4 +1,4 @@
-// L4 · the mailbox.events route (K6), declarative policy (W3) and the
+// L4 · the kyu.events route (K6), declarative policy (W3) and the
 // health endpoint (W4), E2E.
 
 mod support;
@@ -13,19 +13,19 @@ async fn l4_k6_a_dead_letter_event_reaches_the_warning_webhook() {
     let ha = FakeHa::start();
     let bridge = Bridge::start(&route_config(
         &hub,
-        "mailbox-events",
-        "mailbox.events",
-        &ha.url("/api/webhook/hub_mailbox_events"),
+        "kyu-events",
+        "kyu.events",
+        &ha.url("/api/webhook/hub_kyu_events"),
     ));
 
-    // mailbox.events already exists on a fresh hub, so there is no
+    // kyu.events already exists on a fresh hub, so there is no
     // unborn line to wait for — wait until the bridge's first poll has
     // created the subscription instead.
     let deadline = std::time::Instant::now() + Duration::from_secs(15);
-    while !subscription_exists(&hub, "mailbox.events", "ha-bridge").await {
+    while !subscription_exists(&hub, "kyu.events", "ha-bridge").await {
         assert!(
             std::time::Instant::now() < deadline,
-            "the bridge never created its mailbox.events subscription"
+            "the bridge never created its kyu.events subscription"
         );
         tokio::time::sleep(Duration::from_millis(100)).await;
     }

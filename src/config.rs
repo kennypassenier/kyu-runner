@@ -13,12 +13,12 @@ use thiserror::Error;
 
 pub const DEFAULT_CONFIG_PATH: &str = "/etc/hub-bridge/config.toml";
 
-/// The hub caps `wait` at 300 s (mailbox K2); staying under it keeps the
+/// The hub caps `wait` at 300 s (kyu K2); staying under it keeps the
 /// hub's answer authoritative instead of silently clamped.
 const MAX_POLL_WAIT_MS: u64 = 300_000;
 
 /// The hub's default lease when a route sets no policy of its own
-/// (mailbox `DEFAULT_LEASE_MS`). If mailbox ever changes this default,
+/// (kyu `DEFAULT_LEASE_MS`). If kyu ever changes this default,
 /// routes without an explicit `policy.lease_ms` get a wrong budget —
 /// which is why the K8 remedy pushes toward setting one.
 const HUB_DEFAULT_LEASE_MS: u64 = 30_000;
@@ -194,7 +194,7 @@ pub struct Route {
     pub webhook_timeout_ms: Option<u64>,
     /// W3: forwarded verbatim to the hub's policy endpoint at startup.
     /// The bridge does not interpret it — the hub validates policies and
-    /// refuses unusable ones with a remedy (mailbox K7), so hardcoding
+    /// refuses unusable ones with a remedy (kyu K7), so hardcoding
     /// the hub's field names here would only add a second, staler copy.
     #[serde(default)]
     pub policy: Option<toml::Table>,
@@ -419,7 +419,7 @@ impl Route {
             return err(
                 "the name is empty or contains characters outside A-Za-z0-9._- .",
                 "route names end up in logs and the health endpoint; keep them plain, \
-                 e.g. \"mailbox-events\".",
+                 e.g. \"kyu-events\".",
             );
         }
         if !ident(&self.topic) {
@@ -432,7 +432,7 @@ impl Route {
         if !ident(&self.subscription) {
             return err(
                 "the subscription is empty or contains characters outside A-Za-z0-9._- .",
-                "subscription names are mailbox's one concept; keep them plain, \
+                "subscription names are kyu's one concept; keep them plain, \
                  e.g. \"ha-bridge\".",
             );
         }
@@ -466,10 +466,10 @@ mod tests {
         hub_url = "http://127.0.0.1:8080/"
 
         [[routes]]
-        name = "mailbox-events"
-        topic = "mailbox.events"
+        name = "kyu-events"
+        topic = "kyu.events"
         subscription = "ha-bridge"
-        webhook_url = "http://ha.lan:8123/api/webhook/hub_mailbox_events"
+        webhook_url = "http://ha.lan:8123/api/webhook/hub_kyu_events"
     "#;
 
     fn remedy_of(error: ConfigError) -> String {
@@ -535,7 +535,7 @@ mod tests {
     #[test]
     fn l1_k8_duplicate_route_names_are_refused() {
         let text = format!(
-            "{VALID}\n[[routes]]\nname = \"mailbox-events\"\ntopic = \"t2\"\n\
+            "{VALID}\n[[routes]]\nname = \"kyu-events\"\ntopic = \"t2\"\n\
              subscription = \"s2\"\nwebhook_url = \"http://ha.lan:8123/api/webhook/x\"\n"
         );
         let message = remedy_of(parse(&text).expect_err("dup name"));
@@ -545,7 +545,7 @@ mod tests {
     #[test]
     fn l1_k8_a_duplicate_topic_subscription_pair_is_refused() {
         let text = format!(
-            "{VALID}\n[[routes]]\nname = \"second\"\ntopic = \"mailbox.events\"\n\
+            "{VALID}\n[[routes]]\nname = \"second\"\ntopic = \"kyu.events\"\n\
              subscription = \"ha-bridge\"\nwebhook_url = \"http://ha.lan:8123/api/webhook/x\"\n"
         );
         let message = remedy_of(parse(&text).expect_err("dup pair"));
@@ -555,8 +555,8 @@ mod tests {
     #[test]
     fn l1_k8_bad_identifier_characters_are_refused() {
         for (field, bad) in [
-            ("name = \"mailbox-events\"", "name = \"mail box\""),
-            ("topic = \"mailbox.events\"", "topic = \"mailbox/events\""),
+            ("name = \"kyu-events\"", "name = \"mail box\""),
+            ("topic = \"kyu.events\"", "topic = \"kyu/events\""),
             ("subscription = \"ha-bridge\"", "subscription = \"\""),
         ] {
             let text = VALID.replace(field, bad);
@@ -659,7 +659,7 @@ mod tests {
         // Security review F6: "http://" passes a prefix check, then
         // wedges the route in a permanent circuit-open state at runtime.
         let text = VALID.replace(
-            "webhook_url = \"http://ha.lan:8123/api/webhook/hub_mailbox_events\"",
+            "webhook_url = \"http://ha.lan:8123/api/webhook/hub_kyu_events\"",
             "webhook_url = \"http://\"",
         );
         remedy_of(parse(&text).expect_err("hostless url must be refused"));
@@ -684,7 +684,7 @@ mod tests {
             "webhook_timeout_ms = 50\n        webhook_url =",
         );
         let message = remedy_of(parse(&text).expect_err("per-route tiny timeout"));
-        assert!(message.contains("mailbox-events"), "{message}");
+        assert!(message.contains("kyu-events"), "{message}");
     }
 
     #[test]
@@ -735,7 +735,7 @@ mod tests {
             config
                 .routes
                 .iter()
-                .any(|route| route.topic == "mailbox.events"),
+                .any(|route| route.topic == "kyu.events"),
             "the K6 default route is present"
         );
     }

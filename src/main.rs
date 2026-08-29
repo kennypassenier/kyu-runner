@@ -1,4 +1,4 @@
-//! hub-bridge: a stateless pump from the mailbox hub to Home Assistant
+//! hub-bridge: a stateless pump from the kyu hub to Home Assistant
 //! webhooks. It long-polls configured topic subscriptions, forwards each
 //! payload byte-for-byte to an HA webhook, and acks only on HA's 2xx —
 //! so the hub's retry → dead-letter machinery works for the HA delivery.
@@ -17,7 +17,7 @@ use hub_bridge::webhook::WebhookClient;
 use tokio::sync::watch;
 
 const USAGE: &str = "\
-hub-bridge — stateless pump from the mailbox hub to Home Assistant webhooks
+hub-bridge — stateless pump from the kyu hub to Home Assistant webhooks
 
 Usage:
   hub-bridge [--config <path>] [--check-config]
