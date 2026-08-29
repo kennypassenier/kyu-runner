@@ -3,11 +3,12 @@
 Phase 2 output. Feature IDs are permanent: they appear in commits,
 test names, docs and forms forever.
 
-> **AFK note (2026-08-28).** Ratings below are Claude's recommended
-> ratings, taken during the AFK build on Kenny's instruction ("doe
-> alles wat je kan zonder mijn input"). They are PROVISIONAL until the
-> queued rating form in `docs/PENDING_MINI_ROUNDS.md` is answered.
-> The scale is the canonical one: Essential · Desired · Later · Don't do.
+> **Ratified by Kenny, 2026-08-29** (ratification form 1): every K/M/T
+> item and the build-vs-buy record confirmed as recommended; W2 and W4
+> raised Desired → **Essential** (already built), W6 raised Later →
+> **Desired** (to build — registered as milestone L6), W5's
+> supersession and W7's out-of-scope confirmed. The scale is the
+> canonical one: Essential · Desired · Later · Don't do.
 
 ## Core (from the approved scope)
 
@@ -30,11 +31,11 @@ test names, docs and forms forever.
 | ID | Rating | Feature |
 |---|---|---|
 | W1 | Essential | **Graceful shutdown.** SIGTERM/SIGINT → stop claiming new messages, let the in-flight delivery finish within a bounded grace period, then exit. An interrupted delivery is safe anyway (K5); this just avoids a gratuitous duplicate on every deploy. |
-| W2 | Desired | **`--check-config`.** Parse + validate the config and exit; wired as `ExecStartPre=` in the unit and used in the runbook before restarts. |
+| W2 | Essential | **`--check-config`.** Parse + validate the config and exit; wired as `ExecStartPre=` in the unit and used in the runbook before restarts. |
 | W3 | Essential | **Declarative route policy.** Optional `[routes.policy]` block (lease_ms, max_attempts, ttl_ms, …) that the bridge PUTs to the hub per subscription — config in git as the source of truth for the study's "TTS-ish routes get short TTL, ops routes long". ⚔ Promoted Desired → Essential by the critic pass: AR15's long-outage story leans on raising `max_attempts`, and AR5's lease budget leans on `lease_ms`. Order matters (the PUT fails on a subscription that does not exist yet): first successful poll creates the subscription, then PUT with retry until in force, logging the hub's "values in force" answer per route. The hub's write replaces every field (mailbox K7): a bridge restart reverts dashboard tweaks — documented loudly in the runbook. |
-| W4 | Desired | **Bridge `/healthz`.** Minimal HTTP listener reporting the route loops' liveness, for Uptime Kuma. The hub-side idle-subscription flag (mailbox K11) already catches a dead bridge; this is the direct probe. |
+| W4 | Essential | **Bridge `/healthz`.** Minimal HTTP listener reporting the route loops' liveness, for Uptime Kuma. The hub-side idle-subscription flag (mailbox K11) already catches a dead bridge; this is the direct probe. |
 | W5 | — | **Superseded by AR16** (critic pass): topic-birth replay is built-in behaviour, not a config knob — after a 404 the next successful poll carries `from=beginning`, so a brand-new topic's first messages are never lost. Pre-existing topics start from now; manual replay is a runbook procedure. |
-| W6 | Later | **Bridge `/metrics`.** Prometheus counters (delivered, nacked, per route). The hub's metrics already expose queue state; revisit when Grafana wants bridge-side series. |
+| W6 | Desired | **Bridge `/metrics`.** Prometheus counters (delivered, nacked, per route). Raised Later → Desired at ratification (Kenny, 2026-08-29): to build as milestone L6, on the same opt-in listener as W4's `/healthz`. Test bar: E2E — counters visible and moving after a delivery and after a nack. |
 | W7 | Don't do | **Reverse direction (HA → hub via the bridge).** Decided at the Phase 0 gate (B1): HA produces via `rest_command` directly to the hub. |
 
 ## Mandatory items (procedure Phase 2)

@@ -8,10 +8,10 @@ presented on Kenny's return. Nothing here is frozen until ratified.
 
 | # | Gate | What was decided provisionally | Where recorded |
 |---|---|---|---|
-| Q1 | Phase 1 · build-vs-buy | Build (study §4 option A re-validated); alternatives rejected with reasons | SCOPE.md "Build-vs-buy" |
-| Q2 | Phase 2 · feature ratings | K1-K11 Essential; W1 Essential; W2-W4 Desired; W5-W6 Later; W7 Don't do (B1); M1-M3 answered | FEATURES.md |
-| Q3 | Phase 3 · tech choices | Rust 1.97 pinned, tokio, reqwest (no TLS), serde+toml, tracing, cargo-deny, musl-static release artifact, MIT/Apache-2.0 | ARCHITECTURE_DECISIONS.md T1-T9 |
-| Q4 | Phase 3 · **platform (OPEN question)** | Assumption: LXC 109 only, x86_64. The procedure forbids guessing this — Kenny states which machines actually run it | ARCHITECTURE_DECISIONS.md T8 |
+| Q1 | Phase 1 · build-vs-buy | **RATIFIED 2026-08-29** (form 1): Klopt | SCOPE.md "Build-vs-buy" |
+| Q2 | Phase 2 · feature ratings | **RATIFIED 2026-08-29** (form 1): all K/M items as recommended; W2 + W4 raised to Essential (already built); W6 raised to Desired → **new milestone L6** (bridge /metrics); W5 supersession + W7 out-of-scope confirmed | FEATURES.md |
+| Q3 | Phase 3 · tech choices | **RATIFIED 2026-08-29** (form 1): T1-T9 Klopt | ARCHITECTURE_DECISIONS.md T1-T9 |
+| Q4 | Phase 3 · **platform (OPEN question)** | Form 1's textarea came back empty — re-asked explicitly in form 2; working assumption stays LXC 109 only, x86_64 | ARCHITECTURE_DECISIONS.md T8 |
 | Q5 | Phase 4 · architecture freeze | AR1-AR17. The mandatory critic pass ran 2026-08-29 (network + auth) and found 4 blocking + 4 serious objections; all fixes adopted before the build and marked "⚔ Critic (adopted)" in the doc. Highlights: AR15 circuit breaker (naive nack would dead-letter the whole backlog ~10-15 s into an HA outage), AR2/AR3 hold-and-retry (ordering), AR16 topic-birth replay (first messages on a new topic were silently lost), AR17 no-redirects (a 302 could ack a payload HA never received), W3 promoted to Essential (load-bearing). Minor items landed in the runbook: `After=mailbox.service`, git-vs-/etc drift check, archive-on-route-removal, musl-resolver/mDNS note, release workflow E2E on the musl artifact, `local_only: true` on HA webhook triggers | ARCHITECTURE_DECISIONS.md |
 | Q6 | Phase 5 · milestones + standing rules + hook config | L0-L5 plan; enforcement installed before L0 | REALIZATION_PLAN.md |
 | Q7 | Phase 6 · milestone reports | Combined report per AFK rule, evidence per exit criterion | REALIZATION_PLAN.md status table |
