@@ -2,6 +2,14 @@
 
 Phases 3-4 output. T = tech choice, AR = architecture.
 
+> **FROZEN 2026-08-29** by Kenny (ratification form 2): AR1-AR17
+> confirmed; changes go through mini-rounds only. One dated amendment
+> was recorded at the freeze itself: AR11 (see there). The platform
+> question was answered at the same gate: the bridge will run on **an
+> LXC on the Proxmox host, which one is deliberately not yet chosen**
+> (x86_64 Linux; the earlier LXC-109 assumption is thereby replaced),
+> and Kenny authorized deployment testing on a **scratch LXC**.
+
 > **AFK note (2026-08-28).** Decisions below were taken on documented
 > recommendations during the AFK build and are PROVISIONAL until the
 > queued ratification forms in `docs/PENDING_MINI_ROUNDS.md` are
@@ -41,9 +49,10 @@ Phases 3-4 output. T = tech choice, AR = architecture.
   Release artifact: **`x86_64-unknown-linux-musl`, statically linked** —
   LXC 109's libc is not this Arch machine's libc, and a static binary
   removes the whole class (the bridge needs no C dependencies; there is
-  no sqlite here). ⚠ The procedure requires the platform question to be
-  put to Kenny as an OPEN question — queued; the working assumption is
-  "LXC 109 only".
+  no sqlite here). **Platform answered at ratification (2026-08-29):**
+  an LXC on the Proxmox host, which one deliberately TBD — the static
+  musl artifact keeps every Debian-ish LXC in reach; scratch-LXC
+  deployment testing authorized by Kenny.
 - **T9 · License:** MIT OR Apache-2.0, like kyu.
 
 ## Architecture (Phase 4)
@@ -158,8 +167,18 @@ Phases 3-4 output. T = tech choice, AR = architecture.
   HTTP over a tokio listener — no web framework for one endpoint.
   Reports `{status, routes: [{name, state}]}`; route names only, never
   payloads, never the token.
-- **AR11 · No TLS, LAN only.** Mirrors the hub's N3. The bridge is
-  never exposed beyond the LAN; documented loudly in the runbook.
+- **AR11 · No TLS, LAN only** *(amended at ratification, 2026-08-29)*.
+  Mirrors the hub's N3. The bridge is never exposed beyond the LAN;
+  documented loudly in the runbook. **Amendment (Kenny, form 2,
+  "Aanpassen"):** https traffic via Traefik may appear in the future.
+  Recorded consequences: (1) *inbound* TLS (e.g. `/healthz` or
+  `/metrics` behind Traefik) needs **no bridge change** — Traefik
+  terminates TLS and forwards plain HTTP; (2) *outbound* https (a
+  `webhook_url` or `hub_url` behind a TLS-terminating Traefik) is the
+  real trigger: the moment such a concrete URL exists, a **mini-round**
+  adds `rustls` + `webpki-roots` to reqwest and relaxes the K8 scheme
+  check — queued as AR11-TLS in PENDING_MINI_ROUNDS.md. Until then the
+  no-TLS build stands and the K8 remedy names this path.
 - **AR12 · Module layout.** `config.rs` (pure parse/validate — unit
   tested), `route.rs` (the pump state machine over client traits),
   `hub.rs` + `webhook.rs` (reqwest adapters), `health.rs`, `main.rs`

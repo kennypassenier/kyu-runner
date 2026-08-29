@@ -54,7 +54,9 @@ pub enum ConfigError {
 
     #[error(
         "{field} is {url:?}, which does not start with http:// . Remedy: the bridge speaks plain \
-         HTTP on the LAN only (AR11); use an http:// address such as http://127.0.0.1:8080."
+         HTTP on the LAN only (AR11); use an http:// address such as http://127.0.0.1:8080. If \
+         this URL sits behind a TLS-terminating Traefik, that is the AR11-TLS mini-round: rustls \
+         goes in the moment a concrete https target exists."
     )]
     UrlScheme { field: String, url: String },
 
