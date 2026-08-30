@@ -31,7 +31,7 @@ jobs:
       # published image gives CI the same hub this machine has.
       - name: Take the kyu binary out of the published image
         run: |
-          image=ghcr.io/kennypassenier/kyu@sha256:404cf27409f28fc3aadd00a5cf027c239b4e99c5c516681fabd99f9ce7beaea9 # 1.0.0
+          image=ghcr.io/kennypassenier/kyu@sha256:13963aff9cb9b8449b19a51b209ef22661f7c174b1d9ddc8a88ef38240747177 # 2.0.0
           container=$(docker create "$image")
           docker cp "$container:/usr/local/bin/kyu" ./kyu
           docker rm "$container"
