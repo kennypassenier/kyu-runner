@@ -17,9 +17,9 @@ gates hold from any session or terminal. After a fresh clone, run:
 
 | Field | Value |
 |---|---|
-| Current phase | 9 · Release |
+| Current phase | 10 · Retrospective (0.1.0 released 2026-08-30) |
 | Last completed gate | Ratification forms 1-5 (2026-08-29/30): every phase 1-8 decision signed off, architecture frozen, docs approved |
-| Next gate | Phase 10 · retrospective (two-way form, diff on dev-procedure) |
+| Next gate | Phase 10 · retrospective (two-way form, diff on dev-procedure), then the rollout: pick the LXC, wire HA first, measure the unknown-webhook behaviour |
 | AFK mode | off |
 
 The AFK build's queue in `docs/PENDING_MINI_ROUNDS.md` is now fully
