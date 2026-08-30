@@ -239,7 +239,16 @@ Phases 3-4 output. T = tech choice, AR = architecture.
   coupling that had to be handled rather than avoided: it now **drives**
   AR5's budget margin, so raising it tightens the budget instead of
   letting the two drift apart.
-- **AR17 · No redirects.** The webhook client uses
+- **AR17 · No redirects** *(extended 2026-08-30 after the official
+  security review)*. Originally the webhook client only; the hub client
+  now refuses them as well. The review confirmed the token cannot leak
+  that way (reqwest drops `authorization` on a cross-host redirect),
+  but a compromised hub could otherwise steer the runner's requests at
+  an arbitrary LAN address, and a hub answering 302 is broken in any
+  case. Argued, not executed: making the real hub redirect is not
+  something a test can ask of it (see TEST_PLAN, "the hub is never
+  mocked").
+ The webhook client uses
   `redirect::Policy::none()`; any 3xx is a delivery failure. ⚔
   *Critic (adopted):* reqwest's default policy follows a 302 by
   converting POST to a body-less GET, which HA can answer 200 — the

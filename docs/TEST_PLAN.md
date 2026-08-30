@@ -119,6 +119,22 @@ this file before the form, per the report-form evidence rule.
    timing in a test is fiddly, and real running time will teach more
    than a contrived one. Revisit after the rollout.
 
+## Official security review (2026-08-30)
+
+Run against the whole codebase once the repository existed (the
+repo-scoped tool needs a remote, which is why it waited). **No finding
+above the confidence bar.** What it checked hardest and found sound:
+bearer-token exfiltration through a hub-controlled redirect (reqwest
+strips `authorization` across hosts, and the hub clients now refuse
+redirects outright anyway — AR17 extended), injection of hub-controlled
+data into settle URLs and forwarded headers (the `kyu-id` charset check
+and the `kyu-` prefix filter hold; CR/LF is structurally impossible
+through a parsed `HeaderMap`), and the hand-built JSON and Prometheus
+output on the observation socket (both interpolate only K8-validated
+route names and fixed state literals, and nothing from the request is
+reflected). Out of scope by design: the plaintext token on the wire is
+a consequence of the no-TLS decision (AR11).
+
 ## Reasoned vs measured (Phase 7 sweep)
 
 Measured this build: docker harness path + pinned public image (full

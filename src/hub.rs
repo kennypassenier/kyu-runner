@@ -4,7 +4,7 @@
 
 use std::time::Duration;
 
-use reqwest::{Client, StatusCode, header};
+use reqwest::{Client, StatusCode, header, redirect};
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -69,10 +69,20 @@ impl HubClient {
     ) -> anyhow::Result<Self> {
         // The wire unit for `wait` is whole seconds (kyu K2).
         let wait_s = poll_wait.as_secs().max(1);
+        // AR17 applies to this side too (security review, 2026-08-30).
+        // reqwest follows redirects by default, so a compromised hub
+        // could steer these calls at any LAN address. The token itself
+        // is safe — reqwest strips `authorization` across hosts — but a
+        // hub that answers 302 is malfunctioning either way, and saying
+        // so out loud beats silently going somewhere else.
         let poll = Client::builder()
             .timeout(Duration::from_secs(wait_s + 10))
+            .redirect(redirect::Policy::none())
             .build()?;
-        let settle = Client::builder().timeout(settle_timeout).build()?;
+        let settle = Client::builder()
+            .timeout(settle_timeout)
+            .redirect(redirect::Policy::none())
+            .build()?;
         Ok(Self {
             poll,
             settle,
