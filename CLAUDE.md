@@ -22,11 +22,11 @@ gates hold from any session or terminal. After a fresh clone, run:
 | Next gate | Phase 10 · retrospective (two-way form, diff on dev-procedure) |
 | AFK mode | off |
 
-**AFK contract:** phases 1-5 decisions are taken on the documented
-recommendations and are PROVISIONAL until ratified; every gate is
-queued as a form in `docs/PENDING_MINI_ROUNDS.md`, which is the FIRST
-thing presented when Kenny returns. The real hub on LXC 109 is never
-touched (scope R1).
+The AFK build's queue in `docs/PENDING_MINI_ROUNDS.md` is now fully
+answered — it stays as the record of what was decided when. The real
+hub on LXC 109 is still only touched as an agreed step (scope R1); the
+scratch container for drills is LXC 191 on the Proxmox host, kept until
+the rollout at Kenny's request.
 
 ## Project documents
 
@@ -40,6 +40,10 @@ touched (scope R1).
 | docs/TEST_PLAN.md | what is proven where + accepted limitations (Phase 7) |
 
 ## Gates (enforced)
+
+`main` on GitHub requires the `gates` and `deny` checks and requires the
+branch to be up to date, admins included — so a fresh commit cannot be
+pushed straight to `main`: branch, wait for green, fast-forward.
 
 Commits are blocked unless `.claude/hooks/gates.sh` passes and the
 message carries IDs in brackets (`[K3, AR2]`, `[L1]`, `[meta]`).
