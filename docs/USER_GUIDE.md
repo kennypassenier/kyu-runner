@@ -116,8 +116,8 @@ manual replay for when you do want history).
 
 ### AR1 · A crashing route
 
-A route loop that dies unexpectedly is respawned after 5 s by its
-supervisor; the process never exits over one route, and an unacked
+A route loop that dies unexpectedly is respawned by its supervisor
+(after `route_respawn_ms`, 5 s by default); the process never exits over one route, and an unacked
 claim redelivers on its own.
 
 **Proven by:** `l3_ar1_a_panicking_route_is_respawned_and_the_message_survives`.
@@ -196,6 +196,37 @@ socket is opened.
 
 **Proven by:** `l4_w4_healthz_reports_route_states_when_opted_in`,
 `l1_w4_healthz_listen_must_be_a_socket_address`.
+
+### Tuning (MR1)
+
+Every operational timing has a default that matches what used to be
+hardcoded, so `[tuning]` is optional:
+
+```toml
+[tuning]
+hub_backoff_max_ms = 60000     # be lazier about a hub that is down
+settle_timeout_ms = 8000       # a slower hub; tightens the lease budget too
+healthz_max_connections = 8
+```
+
+Keys: `hub_backoff_ms`, `hub_backoff_max_ms`, `circuit_probe_ms`,
+`circuit_probe_max_ms`, `circuit_probe_timeout_ms`,
+`topic_unborn_poll_ms`, `route_respawn_ms`, `settle_timeout_ms`,
+`healthz_max_connections`, `healthz_timeout_ms`. Raising
+`settle_timeout_ms` also raises AR5's budget margin — the config check
+will tell you if a route's webhook timeout no longer fits.
+
+Deliberately not configurable, each pinned with its reason in
+`src/config.rs`: the 1/2/4/8 s delivery retry ladder and the single
+settle retry (both fit inside the lease budget by construction), and
+the health socket's accept pause (a busy-loop guard).
+
+**Proven by:** `l7_mr1_the_tuning_defaults_match_the_previously_hardcoded_values`,
+`l7_mr1_a_tuning_block_overrides_only_what_it_names`,
+`l7_mr1_a_raised_settle_timeout_tightens_the_lease_budget`,
+`l7_mr1_an_inverted_backoff_pair_is_refused_with_a_remedy`,
+`l7_mr1_out_of_range_tuning_values_are_refused`,
+`l7_mr1_an_unknown_tuning_key_is_refused`.
 
 ### W6 · Metrics
 

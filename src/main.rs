@@ -144,6 +144,7 @@ async fn run(config: config::Config, token: Option<String>) -> anyhow::Result<()
             token,
             config.poll_wait(),
             config.defaults.max_body_bytes,
+            config.tuning.settle_timeout(),
         )
         .context("cannot build the hub client")?,
     );
@@ -164,7 +165,12 @@ async fn run(config: config::Config, token: Option<String>) -> anyhow::Result<()
                  healthz_listen in the config"
                 )
             })?;
-        tokio::spawn(health::serve(listener, Arc::clone(&health)));
+        tokio::spawn(health::serve(
+            listener,
+            Arc::clone(&health),
+            config.tuning.healthz_max_connections,
+            config.tuning.healthz_timeout(),
+        ));
     }
 
     let (stop_tx, stop_rx) = watch::channel(false);
@@ -178,8 +184,16 @@ async fn run(config: config::Config, token: Option<String>) -> anyhow::Result<()
             lease_budget: config.lease_budget(route),
             policy_json: config::Config::policy_json(route),
             health: Arc::clone(&health),
+            hub_backoff: config.tuning.hub_backoff(),
+            circuit_backoff: config.tuning.circuit_backoff(),
+            circuit_probe_timeout: config.tuning.circuit_probe_timeout(),
+            topic_unborn_poll: config.tuning.topic_unborn_poll(),
         };
-        tasks.push(tokio::spawn(supervise(runner, stop_rx.clone())));
+        tasks.push(tokio::spawn(supervise(
+            runner,
+            stop_rx.clone(),
+            config.tuning.route_respawn(),
+        )));
     }
     tracing::info!(
         version = env!("CARGO_PKG_VERSION"),
@@ -212,7 +226,11 @@ async fn run(config: config::Config, token: Option<String>) -> anyhow::Result<()
 /// AR1: a route task never takes the process down — a panic inside the
 /// loop is logged and the loop respawns after a pause. The unacked
 /// claim it may have held redelivers on its own (K5).
-async fn supervise(runner: RouteRunner, shutdown: watch::Receiver<bool>) {
+async fn supervise(
+    runner: RouteRunner,
+    shutdown: watch::Receiver<bool>,
+    respawn_after: std::time::Duration,
+) {
     loop {
         let name = runner.route.name.clone();
         let handle = tokio::spawn(runner.clone().run(shutdown.clone()));
@@ -220,15 +238,15 @@ async fn supervise(runner: RouteRunner, shutdown: watch::Receiver<bool>) {
             Ok(()) => return,
             Err(error) => {
                 tracing::error!(
-                    route = %name, %error,
-                    "route loop died unexpectedly — respawning in 5 s (AR1); an unacked claim \
+                    route = %name, %error, respawn_after_ms = respawn_after.as_millis() as u64,
+                    "route loop died unexpectedly — respawning (AR1); an unacked claim \
                      redelivers by itself (K5)"
                 );
                 runner.health.set(&name, "respawning");
                 if *shutdown.borrow() {
                     return;
                 }
-                tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+                tokio::time::sleep(respawn_after).await;
             }
         }
     }

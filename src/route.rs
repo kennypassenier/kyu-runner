@@ -26,6 +26,11 @@ pub struct RouteRunner {
     /// not exist yet fails — the poll is what creates it).
     pub policy_json: Option<String>,
     pub health: Arc<HealthState>,
+    /// MR1: operational timings from `[tuning]`, defaults unchanged.
+    pub hub_backoff: (u64, u64),
+    pub circuit_backoff: (u64, u64),
+    pub circuit_probe_timeout: Duration,
+    pub topic_unborn_poll: Duration,
 }
 
 enum DeliverEnd {
@@ -91,8 +96,8 @@ impl RouteRunner {
         let mut unborn_logged = false;
         let mut hub_down = false;
         let mut auth_denied = false;
-        let mut hub_backoff = Backoff::new(500, 30_000);
-        let mut circuit_backoff = Backoff::new(1_000, 60_000);
+        let mut hub_backoff = Backoff::new(self.hub_backoff.0, self.hub_backoff.1);
+        let mut circuit_backoff = Backoff::new(self.circuit_backoff.0, self.circuit_backoff.1);
         let mut policy_pending = self.policy_json.is_some();
         let mut policy_warned = false;
 
@@ -145,7 +150,7 @@ impl RouteRunner {
                         unborn_logged = true;
                     }
                     replay = true;
-                    if interrupted(Duration::from_secs(5), &mut shutdown).await {
+                    if interrupted(self.topic_unborn_poll, &mut shutdown).await {
                         break;
                     }
                 }
@@ -216,7 +221,12 @@ impl RouteRunner {
                                     if interrupted(circuit_backoff.next(), &mut shutdown).await {
                                         break 'route;
                                     }
-                                    if webhook::probe_origin(&self.route.webhook_url).await {
+                                    if webhook::probe_origin(
+                                        &self.route.webhook_url,
+                                        self.circuit_probe_timeout,
+                                    )
+                                    .await
+                                    {
                                         info!(
                                             route = %name,
                                             "webhook target reachable again — circuit closed, \
@@ -304,7 +314,7 @@ impl RouteRunner {
         shutdown: &mut watch::Receiver<bool>,
     ) -> DeliverEnd {
         let start = Instant::now();
-        let mut delay = Duration::from_secs(1);
+        let mut delay = crate::config::DELIVERY_RETRY_BASE;
         loop {
             match self
                 .webhook
@@ -333,7 +343,7 @@ impl RouteRunner {
                     if interrupted(delay, shutdown).await {
                         return DeliverEnd::Shutdown;
                     }
-                    delay = (delay * 2).min(Duration::from_secs(8));
+                    delay = (delay * 2).min(crate::config::DELIVERY_RETRY_CAP);
                 }
             }
         }
@@ -353,7 +363,7 @@ impl RouteRunner {
                 }
                 Err(error) if attempt == 0 => {
                     debug!(route = %name, id = %message.id, %error, "ack failed — one retry");
-                    tokio::time::sleep(Duration::from_secs(1)).await;
+                    tokio::time::sleep(crate::config::SETTLE_RETRY_PAUSE).await;
                 }
                 Err(error) => {
                     // A lost ack means a redelivery; the duplicate is

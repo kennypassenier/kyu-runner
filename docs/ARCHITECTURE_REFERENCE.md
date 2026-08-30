@@ -64,20 +64,24 @@ warn + nack unread; the attempts run out into a visible dead letter.
 
 ## The timing model (all defaults, all in one place)
 
+Since MR1 (2026-08-30) the operational rows are `[tuning]` keys with
+these values as defaults; the rows marked *pinned* are constants in
+`config.rs` with the reason written beside them (AR18).
+
 | Number | Where | Why |
 |---|---|---|
 | 25 s | `poll_wait_ms` long-poll `wait` (wire unit: whole seconds) | under the hub's 30 s default and 300 s cap |
 | wait + 10 s | poll client timeout | the poll must outlive its own wait |
-| 5 s | settle client timeout (ack/nack/policy) | reserved inside the lease budget |
+| 5 s | settle client timeout (ack/nack/policy) — `settle_timeout_ms`, also the budget margin | reserved inside the lease budget |
 | 10 s | `webhook_timeout_ms` default, per-route override | one POST |
 | 70% of lease | in-process retry budget (lease = `policy.lease_ms` or the hub default 30 000) | the claim is settled by its owner, never by expiry; K8 refuses `webhook_timeout + 5 s > budget` |
-| 1/2/4/8 s (cap 8) | in-process delivery retries | head-of-line stays head-of-line |
-| 500 ms → 30 s | hub-down backoff (×2, jitter ≤ 12.5%) | K7 |
-| 1 s → 60 s | circuit probe backoff | AR15 |
-| 5 s | route respawn pause after a panic | AR1 |
+| 1/2/4/8 s (cap 8) | in-process delivery retries (*pinned*) | head-of-line stays head-of-line |
+| 500 ms → 30 s | hub-down backoff (×2, jitter ≤ 12.5%) — `hub_backoff_ms` / `hub_backoff_max_ms` | K7 |
+| 1 s → 60 s | circuit probe backoff — `circuit_probe_ms` / `circuit_probe_max_ms` | AR15 |
+| 5 s | route respawn pause after a panic — `route_respawn_ms` | AR1 |
 | max webhook timeout + 5 s | derived shutdown grace | AR9 — an in-flight delivery always fits |
 | 16 MiB | `max_body_bytes` default (min 1024) | F1 — a hub cannot OOM the bridge; `MemoryMax=128M` in the unit as backstop |
-| 5 s / 16 | healthz per-connection timeout / concurrent connections | F2 — a probe port cannot starve the pump |
+| 5 s / 16 | healthz per-connection timeout / concurrent connections — `healthz_timeout_ms` / `healthz_max_connections` | F2 — a probe port cannot starve the pump |
 
 ## Supervision and shutdown
 

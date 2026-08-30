@@ -17,6 +17,7 @@ tested and committed, gates green.
 | L3 | K7, W1 | Hub-down resilience (backoff, transition-only logging, bounded volume) + graceful shutdown. E2E: hub stop/start under load; SIGTERM mid-delivery. |
 | L4 | K6, W3, W4 | `kyu.events` default route in shipped config; declarative route policy PUT at startup; opt-in `/healthz`. E2E each. |
 | L5 | K10, K11, M1, M3 | Deployment: musl release build script, systemd unit + `ExecStartPre` check, numbered install/update/restore runbook, P8 wiring docs (Uptime Kuma, Grafana), release workflow. Restore drill on scratch. |
+| L7 | AR18 | MR1: operational timings to a `[tuning]` config block, correctness-coupled ones pinned with their reason. Unit tests per validation rule; defaults must equal the previously hardcoded values. |
 | L6 | W6 | Bridge `/metrics` (added at ratification 2026-08-29: Kenny raised W6 Later → Desired): Prometheus delivered/nacked counters per route on the W4 socket. E2E: counters move on delivery and on nack. |
 
 Order rationale: config before pump (the pump is unrunnable without
@@ -34,6 +35,7 @@ when the binary's shape is settled.
 | L4 | done 2026-08-29 — kyu.events route (sweeper event E2E), W3 policy PUT with values-in-force log, /healthz |
 | L5 | done 2026-08-29 — static musl artifact, systemd unit, release workflow (E2Es the shipped artifact), runbook; restore-from-zero drill DRILL-OK on scratch (dead letter → warning webhook via the musl binary, acked, clean stop) |
 | L6 | done 2026-08-29 — /metrics on the observation socket; `l6_w6_counters_move_on_delivery_and_on_nack` green |
+| L7 | done 2026-08-30 — MR1: `[tuning]` block, 6 unit tests (`l7_mr1_*`), defaults byte-identical to the previous hardcoded values |
 
 ## Gate log (from Phase 7 onward; standing rule 5)
 
@@ -44,4 +46,5 @@ when the binary's shape is settled.
 | Phase 7 · reasoned-vs-measured sweep | 2026-08-29 | Docker harness path + image measured (full suite via KYU_IMAGE), restore drill measured (DRILL-OK); remaining argued claims all live in the Q9 real-HA/LXC step | TEST_PLAN.md |
 | Phase 8 · documentation | 2026-08-29 | AFK-provisional: USER_GUIDE + DEBUGGING_GUIDE + ARCHITECTURE_REFERENCE written from code/tests; README honesty pass; "Proven by" names mechanically verified (33 references, 0 missing); approval form queued (Q13) | docs/ + Q13 |
 | Ratification forms 1+2 | 2026-08-29 | Kenny ratified phases 1-4: features/tech confirmed (W2/W4 → Essential, W6 → Desired = L6 built), AR1-AR17 **frozen** with the AR11 Traefik amendment, platform = a TBD LXC with scratch testing authorized | FEATURES.md, ARCHITECTURE_DECISIONS.md, PENDING_MINI_ROUNDS.md |
+| Ratification form 3 + mini-round MR1 | 2026-08-30 | Kenny signed off the whole build report (enforcement, L1-L6, coverage, deviations) and closed the build phase. MR1 decided "only the operationally meaningful": ten timings moved to a `[tuning]` config block (defaults unchanged), three stayed pinned with their reason — recorded as AR18 | ARCHITECTURE_DECISIONS.md AR18 |
 | Scratch-LXC deployment drill | 2026-08-30 | LXC 191 (`191-scratch-hub-bridge`, 10.10.10.15, debian-13 unprivileged) created on the Proxmox host per Kenny's authorization; kyu 2.0.0 (binary extracted from the published image) + the musl hub-bridge artifact installed per runbook §1. **Everything held on real infrastructure**: static-pie binary runs, hardened unit (DynamicUser, seccomp, MemoryMax=128M) starts clean in an unprivileged LXC, ExecStartPre check, W3 policy in force (max_attempts 25 logged), dead-letter event delivered end-to-end to the webhook receiver, `/healthz` + `/metrics` reachable over the LAN (delivered_total=1). One runbook finding: the debian template ships without curl — read-back steps documented with a python3 alternative. LXC 191 left **stopped** for Kenny's inspection; teardown is his call | this row + runbook §1 note |

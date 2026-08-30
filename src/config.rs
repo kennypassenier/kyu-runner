@@ -23,9 +23,25 @@ const MAX_POLL_WAIT_MS: u64 = 300_000;
 /// which is why the K8 remedy pushes toward setting one.
 const HUB_DEFAULT_LEASE_MS: u64 = 30_000;
 
-/// Time reserved inside the lease for settling (ack/nack) after the
-/// last delivery attempt (AR5).
-const SETTLE_MARGIN_MS: u64 = 5_000;
+/// Contract-adjacent, therefore pinned rather than configurable
+/// (standing rule "operational knobs are configurable"; mini-round MR1,
+/// 2026-08-30): the in-process retry ladder exists to fit inside the
+/// lease budget (AR5). Exposing base and cap separately invites a
+/// combination that silently outlives the claim, which is the exact
+/// failure the budget was built to prevent.
+pub const DELIVERY_RETRY_BASE: Duration = Duration::from_secs(1);
+pub const DELIVERY_RETRY_CAP: Duration = Duration::from_secs(8);
+
+/// Pinned for the same reason: one bounded retry of a settle call, so a
+/// hub blink does not cost a gratuitous duplicate. Longer belongs to
+/// `settle_timeout_ms`, which IS configurable.
+pub const SETTLE_RETRY_PAUSE: Duration = Duration::from_secs(1);
+
+/// Pinned: not a tuning knob but a busy-loop guard. `accept()` on an
+/// exhausted fd table returns instantly, so without this pause the
+/// health socket would spin a core while the process is already in
+/// trouble (security finding F2).
+pub const HEALTH_ACCEPT_PAUSE: Duration = Duration::from_millis(100);
 
 #[derive(Debug, Error)]
 pub enum ConfigError {
@@ -100,6 +116,12 @@ pub enum ConfigError {
     )]
     PolicyLease { name: String, value: String },
 
+    #[error(
+        "[tuning] {field}: {problem}. Remedy: these are the operational timings; leave the whole \
+         [tuning] block out to use the built-in defaults, or pick a value inside the stated range."
+    )]
+    Tuning { field: String, problem: String },
+
     #[error("route {name:?}: {problem} Remedy: {remedy}")]
     Route {
         name: String,
@@ -160,7 +182,130 @@ pub struct Config {
     #[serde(default)]
     pub defaults: Defaults,
     #[serde(default)]
+    pub tuning: Tuning,
+    #[serde(default)]
     pub routes: Vec<Route>,
+}
+
+/// MR1 (mini-round, Kenny 2026-08-30): the operationally meaningful
+/// timings — the ones an operator might want to change on a running
+/// machine without a rebuild. Every default equals the value that was
+/// hardcoded before, so an absent `[tuning]` block behaves identically.
+/// Numbers that are correctness-coupled stay pinned constants above,
+/// each with the reason it cannot move.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields, default)]
+pub struct Tuning {
+    /// First and longest pause between reconnect attempts while the hub
+    /// is unreachable (K7/AR6).
+    pub hub_backoff_ms: u64,
+    pub hub_backoff_max_ms: u64,
+    /// First and longest pause between probes while a route's circuit
+    /// is open because the webhook target is down (AR15).
+    pub circuit_probe_ms: u64,
+    pub circuit_probe_max_ms: u64,
+    /// How long a single TCP probe of the webhook host may take.
+    pub circuit_probe_timeout_ms: u64,
+    /// How often to re-poll a topic that does not exist yet (AR16).
+    pub topic_unborn_poll_ms: u64,
+    /// Pause before a panicked route loop is respawned (AR1).
+    pub route_respawn_ms: u64,
+    /// Timeout on ack/nack/policy calls; also the margin reserved
+    /// inside the lease budget for settling (AR5), so raising it
+    /// tightens the budget instead of silently breaking the invariant.
+    pub settle_timeout_ms: u64,
+    /// Health socket limits (W4/AR10, security finding F2).
+    pub healthz_max_connections: usize,
+    pub healthz_timeout_ms: u64,
+}
+
+impl Default for Tuning {
+    fn default() -> Self {
+        Self {
+            hub_backoff_ms: 500,
+            hub_backoff_max_ms: 30_000,
+            circuit_probe_ms: 1_000,
+            circuit_probe_max_ms: 60_000,
+            circuit_probe_timeout_ms: 3_000,
+            topic_unborn_poll_ms: 5_000,
+            route_respawn_ms: 5_000,
+            settle_timeout_ms: 5_000,
+            healthz_max_connections: 16,
+            healthz_timeout_ms: 5_000,
+        }
+    }
+}
+
+impl Tuning {
+    pub fn hub_backoff(&self) -> (u64, u64) {
+        (self.hub_backoff_ms, self.hub_backoff_max_ms)
+    }
+
+    pub fn circuit_backoff(&self) -> (u64, u64) {
+        (self.circuit_probe_ms, self.circuit_probe_max_ms)
+    }
+
+    pub fn circuit_probe_timeout(&self) -> Duration {
+        Duration::from_millis(self.circuit_probe_timeout_ms)
+    }
+
+    pub fn topic_unborn_poll(&self) -> Duration {
+        Duration::from_millis(self.topic_unborn_poll_ms)
+    }
+
+    pub fn route_respawn(&self) -> Duration {
+        Duration::from_millis(self.route_respawn_ms)
+    }
+
+    pub fn settle_timeout(&self) -> Duration {
+        Duration::from_millis(self.settle_timeout_ms)
+    }
+
+    pub fn healthz_timeout(&self) -> Duration {
+        Duration::from_millis(self.healthz_timeout_ms)
+    }
+
+    fn validate(&self) -> Result<(), ConfigError> {
+        let pair = |name: &str, base: u64, max: u64| -> Result<(), ConfigError> {
+            if !(50..=600_000).contains(&base) || !(50..=600_000).contains(&max) || max < base {
+                return Err(ConfigError::Tuning {
+                    field: name.into(),
+                    problem: format!(
+                        "base {base} ms and max {max} ms must each be 50-600000 and the max may \
+                         not be below the base"
+                    ),
+                });
+            }
+            Ok(())
+        };
+        pair("hub_backoff", self.hub_backoff_ms, self.hub_backoff_max_ms)?;
+        pair(
+            "circuit_probe",
+            self.circuit_probe_ms,
+            self.circuit_probe_max_ms,
+        )?;
+        for (field, value) in [
+            ("circuit_probe_timeout_ms", self.circuit_probe_timeout_ms),
+            ("topic_unborn_poll_ms", self.topic_unborn_poll_ms),
+            ("route_respawn_ms", self.route_respawn_ms),
+            ("settle_timeout_ms", self.settle_timeout_ms),
+            ("healthz_timeout_ms", self.healthz_timeout_ms),
+        ] {
+            if !(100..=600_000).contains(&value) {
+                return Err(ConfigError::Tuning {
+                    field: field.into(),
+                    problem: format!("{value} ms is outside 100-600000"),
+                });
+            }
+        }
+        if !(1..=1_000).contains(&self.healthz_max_connections) {
+            return Err(ConfigError::Tuning {
+                field: "healthz_max_connections".into(),
+                problem: format!("{} is outside 1-1000", self.healthz_max_connections),
+            });
+        }
+        Ok(())
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -224,7 +369,7 @@ impl Config {
             .map(|route| self.webhook_timeout(route).as_millis() as u64)
             .max()
             .unwrap_or(self.defaults.webhook_timeout_ms);
-        Duration::from_millis(max_timeout + SETTLE_MARGIN_MS)
+        Duration::from_millis(max_timeout + self.tuning.settle_timeout_ms)
     }
 
     /// The lease this route effectively runs under: its own
@@ -269,6 +414,7 @@ impl Config {
     }
 
     fn validate(&mut self) -> Result<(), ConfigError> {
+        self.tuning.validate()?;
         while self.hub_url.ends_with('/') {
             self.hub_url.pop();
         }
@@ -365,11 +511,11 @@ impl Config {
                 .unwrap_or(self.defaults.webhook_timeout_ms);
             let lease = Self::effective_lease_ms(route);
             let budget = lease * 7 / 10;
-            if timeout + SETTLE_MARGIN_MS > budget {
+            if timeout + self.tuning.settle_timeout_ms > budget {
                 return Err(ConfigError::LeaseBudget {
                     name: route.name.clone(),
                     timeout,
-                    margin: SETTLE_MARGIN_MS,
+                    margin: self.tuning.settle_timeout_ms,
                     budget,
                     lease,
                 });
@@ -740,6 +886,71 @@ mod tests {
                 .any(|route| route.topic == "kyu.events"),
             "the K6 default route is present"
         );
+    }
+
+    #[test]
+    fn l7_mr1_the_tuning_defaults_match_the_previously_hardcoded_values() {
+        let config = parse(VALID).expect("valid config");
+        assert_eq!(config.tuning.hub_backoff(), (500, 30_000));
+        assert_eq!(config.tuning.circuit_backoff(), (1_000, 60_000));
+        assert_eq!(
+            config.tuning.circuit_probe_timeout(),
+            Duration::from_secs(3)
+        );
+        assert_eq!(config.tuning.topic_unborn_poll(), Duration::from_secs(5));
+        assert_eq!(config.tuning.route_respawn(), Duration::from_secs(5));
+        assert_eq!(config.tuning.settle_timeout(), Duration::from_secs(5));
+        assert_eq!(config.tuning.healthz_max_connections, 16);
+        assert_eq!(config.tuning.healthz_timeout(), Duration::from_secs(5));
+    }
+
+    #[test]
+    fn l7_mr1_a_tuning_block_overrides_only_what_it_names() {
+        let text = format!("{VALID}\n[tuning]\nhub_backoff_max_ms = 90000\n");
+        let config = parse(&text).expect("valid config");
+        assert_eq!(config.tuning.hub_backoff(), (500, 90_000));
+        assert_eq!(config.tuning.route_respawn(), Duration::from_secs(5));
+    }
+
+    #[test]
+    fn l7_mr1_an_inverted_backoff_pair_is_refused_with_a_remedy() {
+        let text = format!("{VALID}\n[tuning]\nhub_backoff_ms = 30000\nhub_backoff_max_ms = 500\n");
+        let message = remedy_of(parse(&text).expect_err("max below base"));
+        assert!(message.contains("hub_backoff"), "{message}");
+    }
+
+    #[test]
+    fn l7_mr1_out_of_range_tuning_values_are_refused() {
+        for line in [
+            "settle_timeout_ms = 10",
+            "topic_unborn_poll_ms = 900000",
+            "healthz_max_connections = 0",
+            "circuit_probe_timeout_ms = 50",
+        ] {
+            let text = format!("{VALID}\n[tuning]\n{line}\n");
+            remedy_of(parse(&text).expect_err(line));
+        }
+    }
+
+    #[test]
+    fn l7_mr1_an_unknown_tuning_key_is_refused() {
+        let text = format!("{VALID}\n[tuning]\nhub_backoff_millis = 500\n");
+        remedy_of(parse(&text).expect_err("typo in a tuning key"));
+    }
+
+    #[test]
+    fn l7_mr1_a_raised_settle_timeout_tightens_the_lease_budget() {
+        // AR5's invariant must follow the configured settle timeout
+        // instead of drifting from it: with settle 10 s the 17 s
+        // webhook timeout no longer fits the 21 s budget.
+        let text = VALID.replace(
+            "webhook_url =",
+            "webhook_timeout_ms = 15000\n        webhook_url =",
+        );
+        parse(&text).expect("15s + 5s fits the default 21s budget");
+        let tightened = format!("{text}\n[tuning]\nsettle_timeout_ms = 10000\n");
+        let message = remedy_of(parse(&tightened).expect_err("15s + 10s does not fit"));
+        assert!(message.contains("settle margin"), "{message}");
     }
 
     #[test]

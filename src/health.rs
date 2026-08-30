@@ -96,18 +96,23 @@ impl HealthState {
     }
 }
 
-pub async fn serve(listener: tokio::net::TcpListener, state: Arc<HealthState>) {
+pub async fn serve(
+    listener: tokio::net::TcpListener,
+    state: Arc<HealthState>,
+    max_connections: usize,
+    timeout: std::time::Duration,
+) {
     // Security F2: a liveness probe must not be the easiest way to
     // starve the process of fds — bound the concurrent connections,
     // time-limit each one, and never busy-spin on accept errors.
-    let permits = Arc::new(tokio::sync::Semaphore::new(16));
+    let permits = Arc::new(tokio::sync::Semaphore::new(max_connections));
     loop {
         let (mut stream, _) = match listener.accept().await {
             Ok(accepted) => accepted,
             Err(_) => {
                 // EMFILE returns immediately; sleeping keeps fd
                 // exhaustion from becoming a CPU spin as well.
-                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                tokio::time::sleep(crate::config::HEALTH_ACCEPT_PAUSE).await;
                 continue;
             }
         };
@@ -144,7 +149,7 @@ pub async fn serve(listener: tokio::net::TcpListener, state: Arc<HealthState>) {
                 );
                 let _ = stream.write_all(response.as_bytes()).await;
             };
-            let _ = tokio::time::timeout(std::time::Duration::from_secs(5), answer).await;
+            let _ = tokio::time::timeout(timeout, answer).await;
         });
     }
 }

@@ -70,7 +70,7 @@ impl WebhookClient {
 /// AR15's probe: a bare TCP connect to the webhook's host:port — no
 /// HTTP request is ever sent, so no webhook can be triggered by
 /// probing.
-pub async fn probe_origin(url: &str) -> bool {
+pub async fn probe_origin(url: &str, timeout: Duration) -> bool {
     let Ok(parsed) = reqwest::Url::parse(url) else {
         return false;
     };
@@ -79,11 +79,7 @@ pub async fn probe_origin(url: &str) -> bool {
     };
     let port = parsed.port_or_known_default().unwrap_or(80);
     matches!(
-        tokio::time::timeout(
-            Duration::from_secs(3),
-            tokio::net::TcpStream::connect((host, port)),
-        )
-        .await,
+        tokio::time::timeout(timeout, tokio::net::TcpStream::connect((host, port))).await,
         Ok(Ok(_))
     )
 }

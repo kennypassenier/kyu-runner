@@ -222,6 +222,23 @@ Phases 3-4 output. T = tech choice, AR = architecture.
   into HA would be the worse surprise. The runbook documents the
   manual `from=beginning` replay for the rare "route added after
   traffic started" case.
+- **AR18 · Operational timings are configuration, coupled ones are
+  constants** *(mini-round MR1, ratified by Kenny 2026-08-30 — the
+  standing rule "operational knobs are configurable" landed after the
+  Phase 4 freeze)*. A `[tuning]` block carries the ten timings an
+  operator might change on a running machine: hub backoff (base/max),
+  circuit probe backoff (base/max) and probe timeout, topic-unborn poll
+  interval, route respawn pause, settle timeout, and the two health
+  socket limits. Every default equals the value that was hardcoded
+  before, so an absent block is a no-op. **Pinned, with the reason
+  beside each:** the 1/2/4/8 s delivery retry ladder and the single
+  settle retry (both exist to fit inside the lease budget — separate
+  knobs invite a combination that silently outlives the claim, the very
+  failure AR5 prevents), and the health socket's 100 ms accept pause (a
+  busy-loop guard, not a tuning knob). The settle timeout is the
+  coupling that had to be handled rather than avoided: it now **drives**
+  AR5's budget margin, so raising it tightens the budget instead of
+  letting the two drift apart.
 - **AR17 · No redirects.** The webhook client uses
   `redirect::Policy::none()`; any 3xx is a delivery failure. ⚔
   *Critic (adopted):* reqwest's default policy follows a 302 by

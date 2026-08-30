@@ -157,7 +157,7 @@ async fn l3_ar1_a_panicking_route_is_respawned_and_the_message_survives() {
     wait_until(
         "the supervisor respawn line",
         Duration::from_secs(60),
-        || bridge.log().contains("respawning in 5 s"),
+        || bridge.log().contains("respawning (AR1)"),
     )
     .await;
     wait_until("the post-panic delivery", Duration::from_secs(90), || {

@@ -7,10 +7,6 @@ use std::time::Duration;
 use reqwest::{Client, StatusCode, header};
 use thiserror::Error;
 
-/// Settle calls must not dawdle: the lease budget reserves 5 s for
-/// them (AR5).
-const SETTLE_TIMEOUT: Duration = Duration::from_secs(5);
-
 #[derive(Debug, Error)]
 pub enum HubError {
     #[error("hub unreachable: {0}")]
@@ -69,13 +65,14 @@ impl HubClient {
         token: Option<String>,
         poll_wait: Duration,
         max_body_bytes: u64,
+        settle_timeout: Duration,
     ) -> anyhow::Result<Self> {
         // The wire unit for `wait` is whole seconds (kyu K2).
         let wait_s = poll_wait.as_secs().max(1);
         let poll = Client::builder()
             .timeout(Duration::from_secs(wait_s + 10))
             .build()?;
-        let settle = Client::builder().timeout(SETTLE_TIMEOUT).build()?;
+        let settle = Client::builder().timeout(settle_timeout).build()?;
         Ok(Self {
             poll,
             settle,
