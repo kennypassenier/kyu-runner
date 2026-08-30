@@ -17,10 +17,10 @@ gates hold from any session or terminal. After a fresh clone, run:
 
 | Field | Value |
 |---|---|
-| Current phase | AFK build COMPLETE through Phase 8; waiting for Kenny |
-| Last completed gate | Phase 0 (2026-08-28): scope approved item-by-item, B1 out of scope |
-| Next gate | Combined ratification round (Q1-Q13) — see docs/PENDING_MINI_ROUNDS.md; then Phase 9 "Tag & release?" (always Kenny's explicit go) |
-| AFK mode | **on** (Kenny, 2026-08-28: "doe alles wat je kan zonder mijn input") |
+| Current phase | 9 · Release |
+| Last completed gate | Ratification forms 1-5 (2026-08-29/30): every phase 1-8 decision signed off, architecture frozen, docs approved |
+| Next gate | Phase 10 · retrospective (two-way form, diff on dev-procedure) |
+| AFK mode | off |
 
 **AFK contract:** phases 1-5 decisions are taken on the documented
 recommendations and are PROVISIONAL until ratified; every gate is

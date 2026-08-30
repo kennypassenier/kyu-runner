@@ -24,6 +24,18 @@ from the AFK build).
 | [docs/ARCHITECTURE_REFERENCE.md](docs/ARCHITECTURE_REFERENCE.md) | the system as built: route loop, timing model, supervision |
 | [docs/TEST_PLAN.md](docs/TEST_PLAN.md) | what the 57 tests prove, what the doubles cannot express, gaps accepted by decision |
 
+## Branch protection changes the daily flow
+
+`main` requires the `gates` and `deny` checks to pass and requires the
+branch to be up to date, for everyone including the repository owner.
+There is deliberately **no** pull-request review requirement — on a
+single-committer repository that would be ceremony without a reviewer.
+
+The consequence is worth knowing before it surprises you: a direct
+push of a fresh commit to `main` is refused, because that commit has
+no passing checks yet. The flow is therefore: work on a branch, push
+it, wait for CI to go green, then fast-forward `main`.
+
 ## Development setup (one-time per clone)
 
 The commit gates are git-native and must be activated once:
