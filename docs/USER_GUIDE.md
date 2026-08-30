@@ -195,7 +195,12 @@ payload, never the token. Opt-in and fail-closed: without the key no
 socket is opened.
 
 **Proven by:** `l4_w4_healthz_reports_route_states_when_opted_in`,
-`l1_w4_healthz_listen_must_be_a_socket_address`.
+`l1_w4_healthz_listen_must_be_a_socket_address`,
+`l4_w4_the_config_key_is_what_opens_the_socket` (without the key no
+socket exists at all) and
+`l4_w4_healthz_reports_the_failure_state_not_a_frozen_ok` (the state
+really moves to `hub-down` during an outage, so a monitor cannot watch
+a light that never changes colour).
 
 ### Tuning (MR1)
 
@@ -274,7 +279,10 @@ get one 401 line with the `/apps` remedy, not a flood.
 
 **Proven by:** `l2_k9_ar7_the_token_reaches_the_hub_but_never_the_logs`,
 `l2_k9_the_token_stays_out_of_failure_path_and_json_logs`,
-`l2_k9_a_missing_token_logs_the_apps_remedy_once_without_flooding`.
+`l2_k9_a_missing_token_logs_the_apps_remedy_once_without_flooding`,
+and `l3_k9_a_route_resumes_once_the_hub_accepts_its_token_again` — a
+denied route picks up by itself when the door reopens, without a
+restart.
 
 ### W1 · Stopping
 
@@ -284,9 +292,10 @@ exits immediately — safe, because unacked messages redeliver.
 
 **Proven by:** `l3_w1_sigterm_mid_delivery_finishes_the_message_and_exits_zero`,
 `l3_w1_sigint_also_stops_cleanly`,
-`l1_ar9_the_shutdown_grace_is_derived_from_the_largest_timeout`.
-The second-signal path is by construction, not separately tested —
-see TEST_PLAN.md.
+`l1_ar9_the_shutdown_grace_is_derived_from_the_largest_timeout`,
+`l3_w1_a_second_signal_exits_immediately` (exit code 130) and
+`l3_ar9_shutdown_never_outlasts_the_derived_grace` (a delivery stuck
+past its timeout still cannot make systemd wait).
 
 ### K6 · The shipped kyu.events route · K10/K11 · Deployment
 

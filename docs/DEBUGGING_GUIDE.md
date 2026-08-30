@@ -34,7 +34,7 @@ where to look next. Written in Phase 8 from the code as built.
 | `message larger than max_body_bytes` | warn | oversize body nacked unread | raise `max_body_bytes` if legitimate; otherwise find the runaway producer; the message dead-letters visibly |
 | `policy in force (W3)` | info | the route's policy landed; the logged JSON is the hub's authoritative answer | remember: a policy write replaces every field |
 | `policy PUT failed — retrying on later polls` | warn | hub refused or subscription not there yet; ONE warn, then quiet | fix the `[routes.policy]` values; until then the hub's defaults govern |
-| `route loop died unexpectedly — respawning in 5 s` | error | a route panicked; the supervisor restarts it; an unacked claim redelivers | this is a bug worth reporting — grab the panic message above it |
+| `route loop died unexpectedly — respawning` | error | a route panicked; the supervisor restarts it; an unacked claim redelivers | this is a bug worth reporting — grab the panic message above it |
 | `ack failed after a retry — the message will redeliver` | warn | hub blinked between POST and ack; the duplicate is legal | only worrying in volume |
 | `shutdown signal — letting in-flight deliveries finish` / `kyu-runner stopped` | info | orderly stop | — |
 | `second signal — exiting immediately` | warn | double Ctrl-C / stop; safe by design | — |
