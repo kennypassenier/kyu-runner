@@ -252,3 +252,90 @@ async fn l4_w3_a_hub_refused_policy_warns_once_and_the_route_keeps_delivering() 
         "warn once, then quiet (AR6)"
     );
 }
+
+#[tokio::test]
+async fn l4_w4_the_config_key_is_what_opens_the_socket() {
+    // G7 (closed at Kenny's ratification 2026-08-30): the fail-closed
+    // half. The same config, once without and once with the key, on the
+    // same port — the contrast is the evidence that nothing listens
+    // unless you ask for it.
+    let hub = Hub::start().await;
+    let ha = FakeHa::start();
+    let topic = "l4.optin";
+    let port = free_port();
+
+    let without = route_config(&hub, "silent", topic, &ha.url("/api/webhook/x"));
+    let runner = Runner::start(&without);
+    wait_first_poll(&runner).await;
+    assert!(
+        std::net::TcpStream::connect(("127.0.0.1", port)).is_err(),
+        "no healthz_listen key must mean no socket at all"
+    );
+    drop(runner);
+
+    let with = without.replace(
+        "hub_url =",
+        &format!("healthz_listen = \"127.0.0.1:{port}\"\nhub_url ="),
+    );
+    let runner = Runner::start(&with);
+    wait_first_poll(&runner).await;
+    let response = reqwest::Client::new()
+        .get(format!("http://127.0.0.1:{port}/healthz"))
+        .send()
+        .await
+        .expect("with the key the socket answers");
+    assert!(response.status().is_success());
+}
+
+#[tokio::test]
+async fn l4_w4_healthz_reports_the_failure_state_not_a_frozen_ok() {
+    // G7, second half: monitoring that always says the same thing is
+    // worse than no monitoring — it is the exact failure this project
+    // (P8) exists to prevent. So the state must actually move when the
+    // hub goes away.
+    let mut hub = Hub::start().await;
+    if !hub.supports_restart() {
+        eprintln!("SKIPPED: stopping the hub needs KYU_BIN (docker keeps no state)");
+        return;
+    }
+    let ha = FakeHa::start();
+    let topic = "l4.states";
+    let port = free_port();
+    let config = route_config(&hub, "watched", topic, &ha.url("/api/webhook/x")).replace(
+        "hub_url =",
+        &format!("healthz_listen = \"127.0.0.1:{port}\"\nhub_url ="),
+    );
+    let runner = Runner::start(&config);
+    wait_first_poll(&runner).await;
+
+    let state = || async {
+        reqwest::Client::new()
+            .get(format!("http://127.0.0.1:{port}/healthz"))
+            .send()
+            .await
+            .expect("healthz answers")
+            .text()
+            .await
+            .expect("healthz body")
+    };
+    let healthy = state().await;
+    assert!(
+        !healthy.contains("hub-down"),
+        "a reachable hub is not reported as down: {healthy}"
+    );
+
+    hub.stop();
+    let deadline = std::time::Instant::now() + Duration::from_secs(60);
+    loop {
+        if state().await.contains("hub-down") {
+            break;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "healthz never left its healthy state while the hub was down: {}",
+            state().await
+        );
+        tokio::time::sleep(Duration::from_millis(300)).await;
+    }
+    let _ = &runner;
+}

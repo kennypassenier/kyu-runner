@@ -25,9 +25,21 @@ jobs:
         run: cargo fmt --all -- --check
       - name: Lint (warnings are errors)
         run: cargo clippy --all-targets -- -D warnings
-      - name: Full test suite (E2E hub from the public image, by digest)
+      # G1 (Kenny, 2026-08-30): CI used to run without KYU_BIN, so the
+      # drill that stops and restarts the hub skipped itself and "CI is
+      # green" quietly excluded it. Lifting the binary out of the
+      # published image gives CI the same hub this machine has.
+      - name: Take the kyu binary out of the published image
+        run: |
+          image=ghcr.io/kennypassenier/kyu@sha256:404cf27409f28fc3aadd00a5cf027c239b4e99c5c516681fabd99f9ce7beaea9 # 1.0.0
+          container=$(docker create "$image")
+          docker cp "$container:/usr/local/bin/kyu" ./kyu
+          docker rm "$container"
+          chmod +x ./kyu
+          ./kyu --version || true
+      - name: Full test suite (E2E against the real hub binary)
         env:
-          KYU_IMAGE: ghcr.io/kennypassenier/kyu@sha256:404cf27409f28fc3aadd00a5cf027c239b4e99c5c516681fabd99f9ce7beaea9 # 1.0.0
+          KYU_BIN: ${{ github.workspace }}/kyu
         run: cargo test --all
 
   deny:

@@ -235,6 +235,19 @@ impl Hub {
         }
     }
 
+    /// Start it again with a different door token (G5 drill): the hub's
+    /// admission changed, the runner's token did not.
+    pub async fn restart_with_token(&mut self, token: &str) {
+        assert!(self.process.is_none(), "stop() first");
+        assert!(
+            self.binary.is_some(),
+            "the token drill needs KYU_BIN (skipped under docker)"
+        );
+        self.token = Some(token.to_string());
+        self.launch();
+        self.wait_ready().await;
+    }
+
     /// Start it again on the same port with the same data (K7 drill).
     pub async fn restart(&mut self) {
         assert!(self.process.is_none(), "stop() first");

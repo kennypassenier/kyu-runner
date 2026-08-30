@@ -5,7 +5,7 @@ express, and what is not covered **by decision**. Maintained from here
 on; the AFK ratification round (PENDING_MINI_ROUNDS.md) may still move
 items between "covered" and "accepted".
 
-## The suites (66 tests)
+## The suites (71 tests)
 
 | Suite | Scope |
 |---|---|
@@ -15,9 +15,9 @@ items between "covered" and "accepted".
 | `tests/l0_harness.rs` (2) | The harness's own port-reservation mechanism — a flaky harness is a broken gate. |
 | `tests/l1_check_config.rs` (6) | W2 at the binary boundary: exit codes, remedies, `--version`, and the no-network guarantee (a held listener proves `--check-config` never connects). |
 | `tests/l2_pump.rs` (11) | The pump E2E against a **real hub** (binary or docker image): S1-S4, byte-for-byte incl. a non-UTF-8 payload and all four metadata headers, AR15 circuit (both halves: connect-class opens it, a 500 does not), AR16 birth replay, AR17 redirect refusal, F1 oversize cap → dead letter, token/payload log hygiene at trace level in both log formats, 401 remedy without flooding. |
-| `tests/l3_resilience.rs` (4) | K7 hub stop/start drill with a bounded log-volume window; W1 SIGTERM mid-delivery and SIGINT; AR1 panic → supervisor respawn → message survives. |
+| `tests/l3_resilience.rs` (7) | K7 hub stop/start drill with a bounded log-volume window; W1 SIGTERM mid-delivery, SIGINT, and the second-signal exit (code 130); AR9 shutdown bounded by the derived grace even behind a stuck delivery; AR1 panic → supervisor respawn → message survives; K9 a route resumes by itself once the hub accepts its token again. |
 | `tests/l6_metrics.rs` (1) | W6 Prometheus counters move on a delivery and on a nack. |
-| `tests/l4_extras.rs` (6) | K6 dead-letter event → warning webhook (sweeper-emitted, the only kind the hub emits); W3 applied + hub-refused policy path; W4 healthz; AR16 from-now half; K1 two routes through one outage without cross-route blocking. |
+| `tests/l4_extras.rs` (8) | K6 dead-letter event → warning webhook (sweeper-emitted, the only kind the hub emits); W3 applied + hub-refused policy path; W4 healthz opted in, the config key as the only thing that opens the socket, and the state actually moving to `hub-down` during an outage; AR16 from-now half; K1 two routes through one outage without cross-route blocking. |
 
 Every test name carries its feature/milestone IDs (checked by the
 gap audit; the two CLI-surface tests are tagged W2).
@@ -60,36 +60,64 @@ mute "did not become healthy". Regression tests:
 `l0_free_ports_are_never_handed_out_twice`. Verified by three
 consecutive full-gate runs, all green.
 
-## Not covered, by decision (pending Kenny's ratification, Q11)
+## Gaps closed at the Phase 7 gate (Kenny, 2026-08-30)
 
-Eight items, not the "6" the queue entry claimed — recount 2026-08-30
-before the ratification form, per the report-form evidence rule.
+Four of the eight open gaps were closed on Kenny's instruction rather
+than accepted:
 
-1. **Hub-restart drill under docker (CI):**
-   `l3_k7_a_hub_outage_is_one_log_line_and_recovery_is_automatic` returns early
-   when only the docker image is available (a removed container keeps
-   no state) — CI green does not include the K7 drill; the drill's
-   evidence is the dev-machine run. A cached hub binary in CI would
-   close this later.
-2. **S3 kill point:** the kill -9 drill fires at one instant
-   (post-POST, pre-ack — the worst one), not at arbitrary instants.
-3. **Second-signal immediate exit and grace-exceeded abort** (AR9
-   fine print) are unexercised; single SIGTERM and SIGINT are.
-4. **Ack/nack settle failures** (hub dying between POST and settle):
-   the log arms exist, the duplicate is legal by contract, no test
-   forces the timing.
-5. **401-recovery without restart** (token re-minted mid-run): the
-   denial and no-flood are tested; the resumption is not.
-6. **W2 door tested with the master token**, not a dashboard-minted
-   app token (the `/apps` mint flow is browser/CSRF-bound); both are
-   bearers on the same header path.
-7. **Healthz negative space:** no test asserts the absent-key case
-   opens no socket (the code simply never binds) or reads `/healthz`
-   during failure states.
-8. **musl artifact on the TARGET LXC:** partly closed 2026-08-30 — the
-   scratch-LXC drill (LXC 191) ran the real musl artifact under the
-   real systemd unit on a real unprivileged container. What is left is
-   only the eventual target machine, which is deploy step 1 (Q9).
+- **CI ran without the hub-restart drill.** CI now lifts the kyu binary
+  out of the published image and sets `KYU_BIN`, so the stop/start
+  drill (and the token drill below) run there too — "CI is green" no
+  longer quietly excludes them.
+- **Second signal and the shutdown bound.**
+  `l3_w1_a_second_signal_exits_immediately` (exit code 130, well inside
+  the grace) and `l3_ar9_shutdown_never_outlasts_the_derived_grace`
+  (a delivery stuck far beyond the webhook timeout still cannot make
+  systemd wait). *Honest note:* the `task.abort()` branch behind the
+  grace is a backstop that a cooperating route loop never reaches —
+  the loop breaks on the shutdown signal at every await point. The test
+  therefore bounds the observable property (the process always exits in
+  time) rather than pretending to exercise an unreachable line.
+- **Recovery after a 401.**
+  `l3_k9_a_route_resumes_once_the_hub_accepts_its_token_again`: the
+  hub's door changes under a running runner, the runner keeps backing
+  off, and it picks up by itself when the hub accepts its token —
+  no restart.
+- **Health endpoint negative space.**
+  `l4_w4_the_config_key_is_what_opens_the_socket` (same config, same
+  port, once without and once with the key) and
+  `l4_w4_healthz_reports_the_failure_state_not_a_frozen_ok` (the state
+  moves to `hub-down` during an outage instead of freezing on a
+  reassuring value).
+
+## Not covered, by decision (ratified by Kenny 2026-08-30, Q11)
+
+Eight gaps were put to him; four closed (above), three accepted below,
+one parked. The tally in the queue entry had said "6" — recounted from
+this file before the form, per the report-form evidence rule.
+
+1. **The kill point.** The `kill -9` drill fires at the single worst
+   instant (after the webhook POST, before the ack), not at arbitrary
+   instants. Every other instant is strictly easier because the runner
+   holds no state. *Accepted.*
+2. **The door is exercised with the hub's master token**, not with a
+   token minted on its `/apps` page — that flow is browser- and
+   CSRF-bound, and faking it would test an assumption about the hub's
+   database instead of the real path. Both are bearers on the same
+   header. The first real deployment uses an app token, and its smoke
+   test is the genuine evidence. *Accepted.*
+3. **The eventual target machine.** The scratch-LXC drill (LXC 191 on
+   the Proxmox host) ran the real musl artifact under the real systemd
+   unit on a real unprivileged container, so "does it run on an LXC" is
+   measured. Which machine it finally lands on is still open, and its
+   first install is deploy step 1, not a test. *Accepted.*
+
+**Parked for later (Kenny, 2026-08-30):**
+
+4. **The hub dying between the webhook POST and the ack.** The log arms
+   exist and the outcome is a legal duplicate either way; forcing that
+   timing in a test is fiddly, and real running time will teach more
+   than a contrived one. Revisit after the rollout.
 
 ## Reasoned vs measured (Phase 7 sweep)
 
@@ -102,6 +130,10 @@ policy PUT fails on a fresh subscription. Measured 2026-08-30 in the scratch-LXC
 musl artifact runs on a real unprivileged LXC, the hardened unit
 starts clean there, and the full runbook §1 chain (install → policy in
 force → dead-letter event → webhook hit → LAN metrics) held on real
-infrastructure. Still argued, queued as Q9: only what needs the real
-Home Assistant — the 200-for-unknown-webhook-ids behaviour and whether
-the automation sees the `kyu-*` headers.
+infrastructure. Still argued, and Kenny chose to **measure it at the rollout** (Q9):
+only what needs the real Home Assistant — whether HA really answers
+200 to an unknown webhook id (if so, a typo'd URL acks into the void
+with healthy counters, which is why the runbook orders automation →
+route → smoke test) and whether the automation sees the `kyu-*`
+headers. One deliberate call to a non-existent webhook settles the
+first question in five minutes.
