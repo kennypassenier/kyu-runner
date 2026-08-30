@@ -9,12 +9,14 @@ items between "covered" and "accepted".
 
 | Suite | Scope |
 |---|---|
-| `src/config.rs` unit tests (27) | K8 fail-closed validation, one test per rule, every rejection asserted to carry a remedy; AR5 lease-budget math; W3 policy JSON rendering; the shipped `deploy/config.toml` parses. |
+| `src/config.rs` unit tests (33) | K8 fail-closed validation, one test per rule, every rejection asserted to carry a remedy; AR5 lease-budget math; W3 policy JSON rendering; the shipped `deploy/config.toml` parses. |
 | `src/route.rs` unit tests (2) | AR6 backoff shape (doubling, cap, bounded jitter, reset). |
+| `tests/l0_skeleton.rs` (1) | The crate builds and the harness runs — the walking skeleton's only claim. |
 | `tests/l0_harness.rs` (2) | The harness's own port-reservation mechanism — a flaky harness is a broken gate. |
 | `tests/l1_check_config.rs` (6) | W2 at the binary boundary: exit codes, remedies, `--version`, and the no-network guarantee (a held listener proves `--check-config` never connects). |
 | `tests/l2_pump.rs` (11) | The pump E2E against a **real hub** (binary or docker image): S1-S4, byte-for-byte incl. a non-UTF-8 payload and all four metadata headers, AR15 circuit (both halves: connect-class opens it, a 500 does not), AR16 birth replay, AR17 redirect refusal, F1 oversize cap → dead letter, token/payload log hygiene at trace level in both log formats, 401 remedy without flooding. |
 | `tests/l3_resilience.rs` (4) | K7 hub stop/start drill with a bounded log-volume window; W1 SIGTERM mid-delivery and SIGINT; AR1 panic → supervisor respawn → message survives. |
+| `tests/l6_metrics.rs` (1) | W6 Prometheus counters move on a delivery and on a nack. |
 | `tests/l4_extras.rs` (6) | K6 dead-letter event → warning webhook (sweeper-emitted, the only kind the hub emits); W3 applied + hub-refused policy path; W4 healthz; AR16 from-now half; K1 two routes through one outage without cross-route blocking. |
 
 Every test name carries its feature/milestone IDs (checked by the
@@ -60,6 +62,9 @@ consecutive full-gate runs, all green.
 
 ## Not covered, by decision (pending Kenny's ratification, Q11)
 
+Eight items, not the "6" the queue entry claimed — recount 2026-08-30
+before the ratification form, per the report-form evidence rule.
+
 1. **Hub-restart drill under docker (CI):**
    `l3_k7_a_hub_outage_is_one_log_line_and_recovery_is_automatic` returns early
    when only the docker image is available (a removed container keeps
@@ -81,9 +86,10 @@ consecutive full-gate runs, all green.
 7. **Healthz negative space:** no test asserts the absent-key case
    opens no socket (the code simply never binds) or reads `/healthz`
    during failure states.
-8. **musl artifact on the real LXC:** the release workflow E2Es the
-   musl binary against the docker hub; first run on LXC 109 itself is
-   deploy step 1 (Q9).
+8. **musl artifact on the TARGET LXC:** partly closed 2026-08-30 — the
+   scratch-LXC drill (LXC 191) ran the real musl artifact under the
+   real systemd unit on a real unprivileged container. What is left is
+   only the eventual target machine, which is deploy step 1 (Q9).
 
 ## Reasoned vs measured (Phase 7 sweep)
 
