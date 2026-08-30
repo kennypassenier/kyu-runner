@@ -17,9 +17,9 @@ gates hold from any session or terminal. After a fresh clone, run:
 
 | Field | Value |
 |---|---|
-| Current phase | 10 · Retrospective (0.1.0 released 2026-08-30) |
+| Current phase | all 11 phases done; 0.1.0 released 2026-08-30 |
 | Last completed gate | Ratification forms 1-5 (2026-08-29/30): every phase 1-8 decision signed off, architecture frozen, docs approved |
-| Next gate | Phase 10 · retrospective (two-way form, diff on dev-procedure), then the rollout: pick the LXC, wire HA first, measure the unknown-webhook behaviour |
+| Next gate | The rollout, when Kenny wants it: pick the LXC, create the HA automation FIRST, then the route, then a smoke test — and measure whether HA really answers 200 to an unknown webhook id. 1.0.0 follows that |
 | AFK mode | off |
 
 The AFK build's queue in `docs/PENDING_MINI_ROUNDS.md` is now fully
