@@ -1,5 +1,5 @@
 // L2 · the pump (K1-K5) end-to-end: a real kyu hub (scratch), a
-// fake HA webhook server, the bridge as a real process. Scenario names
+// fake HA webhook server, the runner as a real process. Scenario names
 // carry the scope's S-ids.
 
 mod support;
@@ -13,17 +13,17 @@ async fn l2_k1_k2_k3_ar16_the_pump_delivers_byte_for_byte_and_acks() {
     let hub = Hub::start().await;
     let ha = FakeHa::start();
     let topic = "l2.happy";
-    let mut bridge = Bridge::start(&route_config(
+    let mut runner = Runner::start(&route_config(
         &hub,
         "happy",
         topic,
         &ha.url("/api/webhook/x"),
     ));
 
-    // Published AFTER the bridge's first poll: the topic is born under
-    // the bridge's feet, exercising the AR16 replay path — the first
+    // Published AFTER the runner's first poll: the topic is born under
+    // the runner's feet, exercising the AR16 replay path — the first
     // message on a brand-new topic must not fall in the gap.
-    wait_first_poll(&bridge).await;
+    wait_first_poll(&runner).await;
     let payload = r#"{"title":"Backup done","ok":true}"#;
     publish(&hub, topic, "application/json", payload).await;
 
@@ -40,14 +40,14 @@ async fn l2_k1_k2_k3_ar16_the_pump_delivers_byte_for_byte_and_acks() {
     assert!(names.contains(&"kyu-id"), "metadata passes through");
     assert!(names.contains(&"kyu-attempt"));
 
-    // Acked on the hub (K3): once the bridge is gone, the subscription
+    // Acked on the hub (K3): once the runner is gone, the subscription
     // has nothing pending — an unacked message would come back.
     wait_until("the ack to land", Duration::from_secs(10), || {
-        bridge.log().contains("delivered and acked")
+        runner.log().contains("delivered and acked")
     })
     .await;
-    bridge.kill_hard();
-    assert_eq!(poll_once(&hub, topic, "ha-bridge").await, None);
+    runner.kill_hard();
+    assert_eq!(poll_once(&hub, topic, "ha-runner").await, None);
 }
 
 #[tokio::test]
@@ -56,14 +56,14 @@ async fn l2_s1_a_500_from_ha_is_not_acked_and_the_message_returns() {
     let ha = FakeHa::start();
     ha.set_mode(HaMode::Fail(500));
     let topic = "l2.retry";
-    let bridge = Bridge::start(&route_config(
+    let runner = Runner::start(&route_config(
         &hub,
         "retry",
         topic,
         &ha.url("/api/webhook/x"),
     ));
 
-    wait_first_poll(&bridge).await;
+    wait_first_poll(&runner).await;
     publish(&hub, topic, "text/plain", "must-arrive").await;
 
     // In-process retries on the same claim first (AR3), then the nack
@@ -71,7 +71,7 @@ async fn l2_s1_a_500_from_ha_is_not_acked_and_the_message_returns() {
     wait_until(
         "the nack after the lease budget",
         Duration::from_secs(45),
-        || bridge.log().contains("delivery kept failing"),
+        || runner.log().contains("delivery kept failing"),
     )
     .await;
     ha.set_mode(HaMode::Ok200);
@@ -80,7 +80,7 @@ async fn l2_s1_a_500_from_ha_is_not_acked_and_the_message_returns() {
             hit.headers
                 .iter()
                 .any(|(name, value)| name == "kyu-attempt" && value == "2")
-        }) && bridge.log().contains("delivered and acked")
+        }) && runner.log().contains("delivered and acked")
     })
     .await;
     let last = ha.hits().last().unwrap().clone();
@@ -88,7 +88,7 @@ async fn l2_s1_a_500_from_ha_is_not_acked_and_the_message_returns() {
     // Gap audit #9: an up-but-failing target must never open the
     // circuit — the next real message is its only side-effect-free probe.
     assert!(
-        !bridge.log().contains("circuit open"),
+        !runner.log().contains("circuit open"),
         "a 500 is not a connect-class failure (AR15)"
     );
 }
@@ -98,14 +98,14 @@ async fn l2_s2_ar15_an_outage_accumulates_unclaimed_and_drains_in_order() {
     let hub = Hub::start().await;
     let ha = FakeHa::start();
     let topic = "l2.outage";
-    let bridge = Bridge::start(&route_config(
+    let runner = Runner::start(&route_config(
         &hub,
         "outage",
         topic,
         &ha.url("/api/webhook/x"),
     ));
 
-    wait_first_poll(&bridge).await;
+    wait_first_poll(&runner).await;
     publish(&hub, topic, "text/plain", "m0").await;
     wait_until("the warm-up delivery", Duration::from_secs(30), || {
         ha.hits().len() == 1
@@ -118,7 +118,7 @@ async fn l2_s2_ar15_an_outage_accumulates_unclaimed_and_drains_in_order() {
         publish(&hub, topic, "text/plain", body).await;
     }
     wait_until("the circuit to open", Duration::from_secs(60), || {
-        bridge.log().contains("circuit open")
+        runner.log().contains("circuit open")
     })
     .await;
 
@@ -155,37 +155,37 @@ async fn l2_s3_kill_nine_mid_delivery_loses_nothing() {
     // config carries the same lease for its budget math (AR5). The
     // subscription must exist before a policy can be set (W3 ordering).
     publish(&hub, topic, "text/plain", "setup").await;
-    let (setup_id, _) = poll_once_from(&hub, topic, "ha-bridge", true)
+    let (setup_id, _) = poll_once_from(&hub, topic, "ha-runner", true)
         .await
         .expect("setup");
-    ack(&hub, topic, "ha-bridge", &setup_id).await;
-    put_policy(&hub, topic, "ha-bridge", r#"{"lease_ms":12000}"#).await;
+    ack(&hub, topic, "ha-runner", &setup_id).await;
+    put_policy(&hub, topic, "ha-runner", r#"{"lease_ms":12000}"#).await;
 
     let config = route_config(&hub, "kill", topic, &ha.url("/api/webhook/x")).replace(
         "webhook_url =",
         "webhook_timeout_ms = 3000\npolicy = { lease_ms = 12000 }\nwebhook_url =",
     );
     ha.set_mode(HaMode::SlowOk(Duration::from_secs(2)));
-    let mut bridge = Bridge::start(&config);
+    let mut runner = Runner::start(&config);
     publish(&hub, topic, "text/plain", "precious").await;
 
     // The hit is recorded before the slow response completes: kill the
-    // bridge exactly mid-delivery, after the POST, before the ack (S3).
+    // runner exactly mid-delivery, after the POST, before the ack (S3).
     wait_until("the delivery to start", Duration::from_secs(30), || {
         ha.hits().iter().any(|hit| hit.body_str() == "precious")
     })
     .await;
-    bridge.kill_hard();
+    runner.kill_hard();
 
     ha.set_mode(HaMode::Ok200);
-    let bridge2 = Bridge::start(&config);
+    let runner2 = Runner::start(&config);
     wait_until("the redelivery", Duration::from_secs(60), || {
         ha.hits()
             .iter()
             .filter(|hit| hit.body_str() == "precious")
             .count()
             >= 2
-            && bridge2.log().contains("delivered and acked")
+            && runner2.log().contains("delivered and acked")
     })
     .await;
     // At-least-once: the duplicate is legal, the loss would not be.
@@ -199,14 +199,14 @@ async fn l2_s4_k4_a_permanently_failing_webhook_dead_letters_visibly() {
     let topic = "l2.poison";
 
     publish(&hub, topic, "text/plain", "setup").await;
-    let (setup_id, _) = poll_once_from(&hub, topic, "ha-bridge", true)
+    let (setup_id, _) = poll_once_from(&hub, topic, "ha-runner", true)
         .await
         .expect("setup");
-    ack(&hub, topic, "ha-bridge", &setup_id).await;
+    ack(&hub, topic, "ha-runner", &setup_id).await;
 
-    // The whole policy lives in the bridge config: W3's PUT replaces
+    // The whole policy lives in the runner config: W3's PUT replaces
     // every field, so a test-side PUT would be silently reverted the
-    // moment the bridge applies its own block (the critic's warning,
+    // moment the runner applies its own block (the critic's warning,
     // demonstrated on ourselves before this line existed).
     let config = route_config(&hub, "poison", topic, &ha.url("/api/webhook/x")).replace(
         "webhook_url =",
@@ -214,16 +214,16 @@ async fn l2_s4_k4_a_permanently_failing_webhook_dead_letters_visibly() {
          policy = { lease_ms = 12000, max_attempts = 2, backoff_ms = 200 }\n\
          webhook_url =",
     );
-    let bridge = Bridge::start(&config);
+    let runner = Runner::start(&config);
     publish(&hub, topic, "text/plain", "the-poison-payload").await;
 
     wait_until("both nacks", Duration::from_secs(60), || {
-        bridge.log().matches("delivery kept failing").count() >= 2
+        runner.log().matches("delivery kept failing").count() >= 2
     })
     .await;
     let deadline = std::time::Instant::now() + Duration::from_secs(30);
     loop {
-        let dead = dead_letters(&hub, topic, "ha-bridge").await;
+        let dead = dead_letters(&hub, topic, "ha-runner").await;
         if dead.contains("the-poison-payload") {
             break;
         }
@@ -243,17 +243,17 @@ async fn l2_ar17_a_redirect_is_a_failure_never_followed() {
     let topic = "l2.redirect";
 
     publish(&hub, topic, "text/plain", "setup").await;
-    let (setup_id, _) = poll_once_from(&hub, topic, "ha-bridge", true)
+    let (setup_id, _) = poll_once_from(&hub, topic, "ha-runner", true)
         .await
         .expect("setup");
-    ack(&hub, topic, "ha-bridge", &setup_id).await;
-    put_policy(&hub, topic, "ha-bridge", r#"{"lease_ms":12000}"#).await;
+    ack(&hub, topic, "ha-runner", &setup_id).await;
+    put_policy(&hub, topic, "ha-runner", r#"{"lease_ms":12000}"#).await;
 
     let config = route_config(&hub, "redirect", topic, &ha.url("/api/webhook/x")).replace(
         "webhook_url =",
         "webhook_timeout_ms = 3000\npolicy = { lease_ms = 12000 }\nwebhook_url =",
     );
-    let mut bridge = Bridge::start(&config);
+    let mut runner = Runner::start(&config);
     publish(&hub, topic, "text/plain", "not-for-elsewhere").await;
 
     wait_until("retries against the 302", Duration::from_secs(30), || {
@@ -264,11 +264,11 @@ async fn l2_ar17_a_redirect_is_a_failure_never_followed() {
         ha.hits().iter().all(|hit| hit.method == "POST"),
         "a 302 must never turn into a GET (AR17)"
     );
-    bridge.kill_hard();
+    runner.kill_hard();
 
     // Not acked: after the lease expires the message is still there.
     tokio::time::sleep(Duration::from_secs(14)).await;
-    let returned = poll_once(&hub, topic, "ha-bridge").await;
+    let returned = poll_once(&hub, topic, "ha-runner").await;
     assert_eq!(
         returned.map(|(_, body)| body),
         Some("not-for-elsewhere".to_string()),
@@ -285,15 +285,15 @@ async fn l2_k9_ar7_the_token_reaches_the_hub_but_never_the_logs() {
     let sentinel = "privacy-sentinel-payload";
 
     let config = route_config(&hub, "door", topic, &ha.url("/api/webhook/x"));
-    let bridge = Bridge::start_with_env(&config, &[("HUB_BRIDGE_TOKEN", token)]);
-    wait_first_poll(&bridge).await;
+    let runner = Runner::start_with_env(&config, &[("KYU_RUNNER_TOKEN", token)]);
+    wait_first_poll(&runner).await;
     publish_authed(&hub, Some(token), topic, "text/plain", sentinel).await;
 
     wait_until("the doored delivery", Duration::from_secs(30), || {
         ha.hits().iter().any(|hit| hit.body_str() == sentinel)
     })
     .await;
-    let log = bridge.log();
+    let log = runner.log();
     assert!(
         !log.contains(token),
         "the token must never reach a log line (rule 10/AR7)"
@@ -312,7 +312,7 @@ async fn l2_k9_a_missing_token_logs_the_apps_remedy_once_without_flooding() {
     let ha = FakeHa::start();
     let topic = "l2.locked";
 
-    let bridge = Bridge::start(&route_config(
+    let runner = Runner::start(&route_config(
         &hub,
         "locked",
         topic,
@@ -321,11 +321,11 @@ async fn l2_k9_a_missing_token_logs_the_apps_remedy_once_without_flooding() {
     publish_authed(&hub, Some(token), topic, "text/plain", "waits").await;
 
     wait_until("the 401 remedy", Duration::from_secs(30), || {
-        bridge.log().contains("/apps")
+        runner.log().contains("/apps")
     })
     .await;
     tokio::time::sleep(Duration::from_secs(5)).await;
-    let mentions = bridge.log().matches("/apps").count();
+    let mentions = runner.log().matches("/apps").count();
     assert!(
         mentions <= 2,
         "auth denial joins transition-only logging (AR6): {mentions} mentions"
@@ -341,14 +341,14 @@ async fn l2_k2_ar4_a_binary_payload_survives_byte_for_byte() {
     let hub = Hub::start().await;
     let ha = FakeHa::start();
     let topic = "l2.binary";
-    let bridge = Bridge::start(&route_config(
+    let runner = Runner::start(&route_config(
         &hub,
         "binary",
         topic,
         &ha.url("/api/webhook/x"),
     ));
 
-    wait_first_poll(&bridge).await;
+    wait_first_poll(&runner).await;
     // Deliberately not UTF-8: a lossy string round-trip would corrupt it.
     let payload: Vec<u8> = vec![0x00, 0xff, 0x9f, 0x92, 0x96, 0x00, 0x80, 0x7f];
     publish_bytes(
@@ -383,10 +383,10 @@ async fn l2_f1_an_oversize_message_is_nacked_and_dead_letters_without_oom() {
     let topic = "l2.oversize";
 
     publish(&hub, topic, "text/plain", "setup").await;
-    let (setup_id, _) = poll_once_from(&hub, topic, "ha-bridge", true)
+    let (setup_id, _) = poll_once_from(&hub, topic, "ha-runner", true)
         .await
         .expect("setup");
-    ack(&hub, topic, "ha-bridge", &setup_id).await;
+    ack(&hub, topic, "ha-runner", &setup_id).await;
 
     // Cap at the validation minimum; the policy shortens the cycle.
     let config = route_config(&hub, "oversize", topic, &ha.url("/api/webhook/x"))
@@ -410,16 +410,16 @@ async fn l2_f1_an_oversize_message_is_nacked_and_dead_letters_without_oom() {
             .collect::<Vec<_>>()
             .join("\n")
     );
-    let bridge = Bridge::start(&config);
+    let runner = Runner::start(&config);
     publish(&hub, topic, "text/plain", &"X".repeat(8 * 1024)).await;
 
     wait_until("the oversize warn", Duration::from_secs(30), || {
-        bridge.log().contains("larger than max_body_bytes")
+        runner.log().contains("larger than max_body_bytes")
     })
     .await;
     let deadline = std::time::Instant::now() + Duration::from_secs(30);
     loop {
-        if !dead_letters(&hub, topic, "ha-bridge")
+        if !dead_letters(&hub, topic, "ha-runner")
             .await
             .contains("\"dead_letters\":[]")
         {
@@ -445,15 +445,15 @@ async fn l2_k9_the_token_stays_out_of_failure_path_and_json_logs() {
     // JSON log format (Loki) with everything at trace level — the
     // widest possible net for a leak (gap audit #5).
     let config = route_config(&hub, "doorfail", topic, &ha.url("/api/webhook/x"));
-    let bridge = Bridge::start_with_env(
+    let runner = Runner::start_with_env(
         &config,
         &[
-            ("HUB_BRIDGE_TOKEN", token),
-            ("HUB_BRIDGE_LOG", "trace"),
-            ("HUB_BRIDGE_LOG_FORMAT", "json"),
+            ("KYU_RUNNER_TOKEN", token),
+            ("KYU_RUNNER_LOG", "trace"),
+            ("KYU_RUNNER_LOG_FORMAT", "json"),
         ],
     );
-    wait_first_poll(&bridge).await;
+    wait_first_poll(&runner).await;
     publish_authed(&hub, Some(token), topic, "text/plain", sentinel).await;
     wait_until("the delivery", Duration::from_secs(30), || {
         ha.hits().iter().any(|hit| hit.body_str() == sentinel)
@@ -463,11 +463,11 @@ async fn l2_k9_the_token_stays_out_of_failure_path_and_json_logs() {
     // Now the failure paths: hub gone mid-run.
     hub.stop();
     wait_until("the hub-down line", Duration::from_secs(30), || {
-        bridge.log().contains("hub unreachable")
+        runner.log().contains("hub unreachable")
     })
     .await;
 
-    let log = bridge.log();
+    let log = runner.log();
     assert!(log.contains("{\""), "json log format is in effect");
     assert!(
         !log.contains(token),

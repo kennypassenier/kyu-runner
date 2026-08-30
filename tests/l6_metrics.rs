@@ -40,18 +40,18 @@ async fn l6_w6_counters_move_on_delivery_and_on_nack() {
             "hub_url =",
             &format!("healthz_listen = \"127.0.0.1:{port}\"\nhub_url ="),
         );
-    let bridge = Bridge::start(&config);
-    wait_first_poll(&bridge).await;
+    let runner = Runner::start(&config);
+    wait_first_poll(&runner).await;
 
     // Baseline: both counters exist at zero, and /healthz still
     // answers on the same socket.
     let baseline = metrics(port).await;
     assert!(
-        baseline.contains("hub_bridge_delivered_total{route=\"counted\"} 0"),
+        baseline.contains("kyu_runner_delivered_total{route=\"counted\"} 0"),
         "{baseline}"
     );
     assert!(
-        baseline.contains("hub_bridge_nacked_total{route=\"counted\"} 0"),
+        baseline.contains("kyu_runner_nacked_total{route=\"counted\"} 0"),
         "{baseline}"
     );
     let health = reqwest::Client::new()
@@ -70,7 +70,7 @@ async fn l6_w6_counters_move_on_delivery_and_on_nack() {
     loop {
         if metrics(port)
             .await
-            .contains("hub_bridge_delivered_total{route=\"counted\"} 1")
+            .contains("kyu_runner_delivered_total{route=\"counted\"} 1")
         {
             break;
         }
@@ -89,7 +89,7 @@ async fn l6_w6_counters_move_on_delivery_and_on_nack() {
         let text = metrics(port).await;
         let nacked = text
             .lines()
-            .find(|line| line.starts_with("hub_bridge_nacked_total{route=\"counted\"}"))
+            .find(|line| line.starts_with("kyu_runner_nacked_total{route=\"counted\"}"))
             .and_then(|line| line.rsplit(' ').next())
             .and_then(|value| value.parse::<u64>().ok())
             .unwrap_or(0);

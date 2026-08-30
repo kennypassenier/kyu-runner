@@ -24,14 +24,14 @@ jobs:
       - name: E2E the released artifact (the shipped binary is the tested binary)
         env:
           KYU_IMAGE: ghcr.io/kennypassenier/kyu@sha256:404cf27409f28fc3aadd00a5cf027c239b4e99c5c516681fabd99f9ce7beaea9 # 1.0.0
-          BRIDGE_BIN: target/x86_64-unknown-linux-musl/release/hub-bridge
+          KYU_RUNNER_BIN: target/x86_64-unknown-linux-musl/release/kyu-runner
         run: cargo test --test l1_check_config --test l2_pump --test l4_extras
       - name: Package with checksum manifest
         run: |
-          cp target/x86_64-unknown-linux-musl/release/hub-bridge hub-bridge-x86_64-linux-musl
-          sha256sum hub-bridge-x86_64-linux-musl > SHA256SUMS
+          cp target/x86_64-unknown-linux-musl/release/kyu-runner kyu-runner-x86_64-linux-musl
+          sha256sum kyu-runner-x86_64-linux-musl > SHA256SUMS
       - uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           files: |
-            hub-bridge-x86_64-linux-musl
+            kyu-runner-x86_64-linux-musl
             SHA256SUMS

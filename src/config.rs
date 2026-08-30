@@ -11,7 +11,7 @@ use std::time::Duration;
 use serde::Deserialize;
 use thiserror::Error;
 
-pub const DEFAULT_CONFIG_PATH: &str = "/etc/hub-bridge/config.toml";
+pub const DEFAULT_CONFIG_PATH: &str = "/etc/kyu-runner/config.toml";
 
 /// The hub caps `wait` at 300 s (kyu K2); staying under it keeps the
 /// hub's answer authoritative instead of silently clamped.
@@ -47,7 +47,7 @@ pub const HEALTH_ACCEPT_PAUSE: Duration = Duration::from_millis(100);
 pub enum ConfigError {
     #[error(
         "cannot read config file {path}: {source}. Remedy: check that the file exists and is \
-         readable; the default location is /etc/hub-bridge/config.toml and --config <path> \
+         readable; the default location is /etc/kyu-runner/config.toml and --config <path> \
          selects another."
     )]
     Unreadable {
@@ -69,7 +69,7 @@ pub enum ConfigError {
     NoRoutes,
 
     #[error(
-        "{field} is {url:?}, which does not start with http:// . Remedy: the bridge speaks plain \
+        "{field} is {url:?}, which does not start with http:// . Remedy: the runner speaks plain \
          HTTP on the LAN only (AR11); use an http:// address such as http://127.0.0.1:8080. If \
          this URL sits behind a TLS-terminating Traefik, that is the AR11-TLS mini-round: rustls \
          goes in the moment a concrete https target exists."
@@ -131,7 +131,7 @@ pub enum ConfigError {
 
     #[error(
         "{field} is {url:?}, which is not a usable http URL ({reason}). Remedy: use a full \
-         http://host[:port]/path address without credentials — the bridge sends its token in a \
+         http://host[:port]/path address without credentials — the runner sends its token in a \
          header, never in a URL."
     )]
     UrlInvalid {
@@ -141,7 +141,7 @@ pub enum ConfigError {
     },
 
     #[error(
-        "[defaults] max_body_bytes is {value}, below 1024. Remedy: the cap protects the bridge \
+        "[defaults] max_body_bytes is {value}, below 1024. Remedy: the cap protects the runner \
          from buffering runaway messages; anything from 1024 up is accepted, the default is \
          16 MiB."
     )]
@@ -315,7 +315,7 @@ pub struct Defaults {
     pub webhook_timeout_ms: u64,
     /// Security F1: a claimed message is buffered in memory before the
     /// webhook POST; this caps it so a misbehaving hub cannot OOM the
-    /// bridge. An oversize message is nacked and dead-letters visibly.
+    /// runner. An oversize message is nacked and dead-letters visibly.
     pub max_body_bytes: u64,
 }
 
@@ -340,7 +340,7 @@ pub struct Route {
     #[serde(default)]
     pub webhook_timeout_ms: Option<u64>,
     /// W3: forwarded verbatim to the hub's policy endpoint at startup.
-    /// The bridge does not interpret it — the hub validates policies and
+    /// The runner does not interpret it — the hub validates policies and
     /// refuses unusable ones with a remedy (kyu K7), so hardcoding
     /// the hub's field names here would only add a second, staler copy.
     #[serde(default)]
@@ -392,7 +392,7 @@ impl Config {
     }
 
     /// W3: the policy block as the JSON document the hub expects. The
-    /// bridge does not know the hub's field names on purpose (the hub
+    /// runner does not know the hub's field names on purpose (the hub
     /// validates and refuses with a remedy); it only guarantees the
     /// value types survive the TOML→JSON trip, which K8 validation
     /// restricts to integers, strings and booleans.
@@ -581,7 +581,7 @@ impl Route {
             return err(
                 "the subscription is empty or contains characters outside A-Za-z0-9._- .",
                 "subscription names are kyu's one concept; keep them plain, \
-                 e.g. \"ha-bridge\".",
+                 e.g. \"ha-runner\".",
             );
         }
         validate_url(
@@ -616,7 +616,7 @@ mod tests {
         [[routes]]
         name = "kyu-events"
         topic = "kyu.events"
-        subscription = "ha-bridge"
+        subscription = "ha-runner"
         webhook_url = "http://ha.lan:8123/api/webhook/hub_kyu_events"
     "#;
 
@@ -694,7 +694,7 @@ mod tests {
     fn l1_k8_a_duplicate_topic_subscription_pair_is_refused() {
         let text = format!(
             "{VALID}\n[[routes]]\nname = \"second\"\ntopic = \"kyu.events\"\n\
-             subscription = \"ha-bridge\"\nwebhook_url = \"http://ha.lan:8123/api/webhook/x\"\n"
+             subscription = \"ha-runner\"\nwebhook_url = \"http://ha.lan:8123/api/webhook/x\"\n"
         );
         let message = remedy_of(parse(&text).expect_err("dup pair"));
         assert!(message.contains("compete"), "{message}");
@@ -705,7 +705,7 @@ mod tests {
         for (field, bad) in [
             ("name = \"kyu-events\"", "name = \"mail box\""),
             ("topic = \"kyu.events\"", "topic = \"kyu/events\""),
-            ("subscription = \"ha-bridge\"", "subscription = \"\""),
+            ("subscription = \"ha-runner\"", "subscription = \"\""),
         ] {
             let text = VALID.replace(field, bad);
             remedy_of(parse(&text).expect_err(bad));

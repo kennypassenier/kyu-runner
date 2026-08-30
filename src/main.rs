@@ -1,4 +1,4 @@
-//! hub-bridge: a stateless pump from the kyu hub to Home Assistant
+//! kyu-runner: a stateless pump from the kyu hub to Home Assistant
 //! webhooks. It long-polls configured topic subscriptions, forwards each
 //! payload byte-for-byte to an HA webhook, and acks only on HA's 2xx —
 //! so the hub's retry → dead-letter machinery works for the HA delivery.
@@ -9,28 +9,28 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 use std::sync::Arc;
 
-use hub_bridge::config;
-use hub_bridge::health::{self, HealthState};
-use hub_bridge::hub::HubClient;
-use hub_bridge::route::RouteRunner;
-use hub_bridge::webhook::WebhookClient;
+use kyu_runner::config;
+use kyu_runner::health::{self, HealthState};
+use kyu_runner::hub::HubClient;
+use kyu_runner::route::RouteRunner;
+use kyu_runner::webhook::WebhookClient;
 use tokio::sync::watch;
 
 const USAGE: &str = "\
-hub-bridge — stateless pump from the kyu hub to Home Assistant webhooks
+kyu-runner — stateless pump from the kyu hub to Home Assistant webhooks
 
 Usage:
-  hub-bridge [--config <path>] [--check-config]
-  hub-bridge --version | --help
+  kyu-runner [--config <path>] [--check-config]
+  kyu-runner --version | --help
 
 Options:
-  --config <path>   Config file (default: /etc/hub-bridge/config.toml)
+  --config <path>   Config file (default: /etc/kyu-runner/config.toml)
   --check-config    Validate the config and exit; makes no network calls
 
 Environment:
-  HUB_BRIDGE_TOKEN       App token for the hub (mint one on its /apps page)
-  HUB_BRIDGE_LOG         Log filter (default: info)
-  HUB_BRIDGE_LOG_FORMAT  \"json\" for one JSON object per line (Loki)
+  KYU_RUNNER_TOKEN       App token for the hub (mint one on its /apps page)
+  KYU_RUNNER_LOG         Log filter (default: info)
+  KYU_RUNNER_LOG_FORMAT  \"json\" for one JSON object per line (Loki)
 ";
 
 struct Args {
@@ -49,14 +49,14 @@ fn parse_args() -> Result<Option<Args>, String> {
             "--config" => match raw.next() {
                 Some(path) => args.config_path = PathBuf::from(path),
                 None => {
-                    return Err("--config needs a path. Remedy: hub-bridge --config \
-                         /etc/hub-bridge/config.toml"
+                    return Err("--config needs a path. Remedy: kyu-runner --config \
+                         /etc/kyu-runner/config.toml"
                         .into());
                 }
             },
             "--check-config" => args.check_only = true,
             "--version" | "-V" => {
-                println!("hub-bridge {}", env!("CARGO_PKG_VERSION"));
+                println!("kyu-runner {}", env!("CARGO_PKG_VERSION"));
                 return Ok(None);
             }
             "--help" | "-h" => {
@@ -65,7 +65,7 @@ fn parse_args() -> Result<Option<Args>, String> {
             }
             other => {
                 return Err(format!(
-                    "unknown argument {other:?}. Remedy: see hub-bridge --help."
+                    "unknown argument {other:?}. Remedy: see kyu-runner --help."
                 ));
             }
         }
@@ -78,7 +78,7 @@ fn main() -> ExitCode {
         Ok(Some(args)) => args,
         Ok(None) => return ExitCode::SUCCESS,
         Err(message) => {
-            eprintln!("hub-bridge: {message}");
+            eprintln!("kyu-runner: {message}");
             return ExitCode::from(2);
         }
     };
@@ -86,7 +86,7 @@ fn main() -> ExitCode {
     let config = match config::load(&args.config_path) {
         Ok(config) => config,
         Err(error) => {
-            eprintln!("hub-bridge: {error}");
+            eprintln!("kyu-runner: {error}");
             return ExitCode::FAILURE;
         }
     };
@@ -99,7 +99,7 @@ fn main() -> ExitCode {
     init_tracing();
     // AR7: the token comes from the environment (systemd
     // EnvironmentFile), never from the config file that lives in git.
-    let token = std::env::var("HUB_BRIDGE_TOKEN")
+    let token = std::env::var("KYU_RUNNER_TOKEN")
         .ok()
         .filter(|token| !token.is_empty());
 
@@ -107,7 +107,7 @@ fn main() -> ExitCode {
         Ok(runtime) => runtime,
         Err(error) => {
             eprintln!(
-                "hub-bridge: cannot start the runtime: {error}. Remedy: this is an OS-level failure (threads/fds); check the machine."
+                "kyu-runner: cannot start the runtime: {error}. Remedy: this is an OS-level failure (threads/fds); check the machine."
             );
             return ExitCode::FAILURE;
         }
@@ -115,7 +115,7 @@ fn main() -> ExitCode {
     match runtime.block_on(run(config, token)) {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
-            eprintln!("hub-bridge: {error:#}");
+            eprintln!("kyu-runner: {error:#}");
             ExitCode::FAILURE
         }
     }
@@ -124,11 +124,11 @@ fn main() -> ExitCode {
 fn init_tracing() {
     use tracing_subscriber::EnvFilter;
     let filter =
-        EnvFilter::try_from_env("HUB_BRIDGE_LOG").unwrap_or_else(|_| EnvFilter::new("info"));
+        EnvFilter::try_from_env("KYU_RUNNER_LOG").unwrap_or_else(|_| EnvFilter::new("info"));
     let builder = tracing_subscriber::fmt()
         .with_env_filter(filter)
         .with_writer(std::io::stderr);
-    if std::env::var("HUB_BRIDGE_LOG_FORMAT").is_ok_and(|value| value == "json") {
+    if std::env::var("KYU_RUNNER_LOG_FORMAT").is_ok_and(|value| value == "json") {
         builder.json().init();
     } else {
         builder.init();
@@ -199,7 +199,7 @@ async fn run(config: config::Config, token: Option<String>) -> anyhow::Result<()
         version = env!("CARGO_PKG_VERSION"),
         hub = %config.hub_url,
         routes = config.routes.len(),
-        "hub-bridge started"
+        "kyu-runner started"
     );
 
     wait_for_signal().await;
@@ -219,7 +219,7 @@ async fn run(config: config::Config, token: Option<String>) -> anyhow::Result<()
             task.abort();
         }
     }
-    tracing::info!("hub-bridge stopped");
+    tracing::info!("kyu-runner stopped");
     Ok(())
 }
 

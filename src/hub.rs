@@ -14,7 +14,7 @@ pub enum HubError {
 
     #[error(
         "hub denied the request (401): the token is missing, wrong or revoked. Remedy: mint an \
-         app token for \"hub-bridge\" on the hub's /apps page and set HUB_BRIDGE_TOKEN in the \
+         app token for \"kyu-runner\" on the hub's /apps page and set KYU_RUNNER_TOKEN in the \
          unit's EnvironmentFile."
     )]
     Auth,
@@ -43,7 +43,7 @@ pub enum PollOutcome {
     TopicUnborn,
     /// Security F1: the body outgrew the configured cap while being
     /// read. The claim is real (the id is here to nack it); the bytes
-    /// were discarded to keep the bridge's memory bounded.
+    /// were discarded to keep the runner's memory bounded.
     Oversize {
         id: String,
         at_least: usize,

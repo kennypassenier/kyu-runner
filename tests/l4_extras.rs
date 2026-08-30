@@ -11,7 +11,7 @@ use support::*;
 async fn l4_k6_a_dead_letter_event_reaches_the_warning_webhook() {
     let hub = Hub::start().await;
     let ha = FakeHa::start();
-    let bridge = Bridge::start(&route_config(
+    let runner = Runner::start(&route_config(
         &hub,
         "kyu-events",
         "kyu.events",
@@ -19,17 +19,17 @@ async fn l4_k6_a_dead_letter_event_reaches_the_warning_webhook() {
     ));
 
     // kyu.events already exists on a fresh hub, so there is no
-    // unborn line to wait for — wait until the bridge's first poll has
+    // unborn line to wait for — wait until the runner's first poll has
     // created the subscription instead.
     let deadline = std::time::Instant::now() + Duration::from_secs(15);
-    while !subscription_exists(&hub, "kyu.events", "ha-bridge").await {
+    while !subscription_exists(&hub, "kyu.events", "ha-runner").await {
         assert!(
             std::time::Instant::now() < deadline,
-            "the bridge never created its kyu.events subscription"
+            "the runner never created its kyu.events subscription"
         );
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
-    let _ = &bridge;
+    let _ = &runner;
 
     // Manufacture a dead letter through the sweeper: the hub emits
     // `message.dead_lettered` only when the sweeper settles an overdue
@@ -82,18 +82,18 @@ async fn l4_w3_the_configured_policy_lands_on_the_hub_and_is_logged() {
         "webhook_url =",
         "policy = { lease_ms = 45000, max_attempts = 25 }\nwebhook_url =",
     );
-    let bridge = Bridge::start(&config);
+    let runner = Runner::start(&config);
 
-    wait_first_poll(&bridge).await;
+    wait_first_poll(&runner).await;
     // The subscription exists only after a successful poll on a born
     // topic (W3 ordering); the publish births the topic.
     publish(&hub, topic, "text/plain", "first").await;
 
     wait_until("the policy to land", Duration::from_secs(30), || {
-        bridge.log().contains("policy in force")
+        runner.log().contains("policy in force")
     })
     .await;
-    let policy = get_policy(&hub, topic, "ha-bridge").await;
+    let policy = get_policy(&hub, topic, "ha-runner").await;
     assert!(
         policy.contains("45000") && policy.contains("25"),
         "the hub reports the configured values in force (W3): {policy}"
@@ -117,8 +117,8 @@ async fn l4_w4_healthz_reports_route_states_when_opted_in() {
         "hub_url =",
         &format!("healthz_listen = \"127.0.0.1:{port}\"\nhub_url ="),
     );
-    let bridge = Bridge::start(&config);
-    wait_first_poll(&bridge).await;
+    let runner = Runner::start(&config);
+    wait_first_poll(&runner).await;
 
     let response = reqwest::Client::new()
         .get(format!("http://127.0.0.1:{port}/healthz"))
@@ -144,14 +144,14 @@ async fn l4_ar16_a_pre_existing_topic_starts_from_now_not_from_history() {
     for body in ["h1", "h2", "h3"] {
         publish(&hub, topic, "text/plain", body).await;
     }
-    let bridge = Bridge::start(&route_config(
+    let runner = Runner::start(&route_config(
         &hub,
         "historian",
         topic,
         &ha.url("/api/webhook/x"),
     ));
     let deadline = std::time::Instant::now() + Duration::from_secs(15);
-    while !subscription_exists(&hub, topic, "ha-bridge").await {
+    while !subscription_exists(&hub, topic, "ha-runner").await {
         assert!(std::time::Instant::now() < deadline, "no subscription");
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
@@ -168,7 +168,7 @@ async fn l4_ar16_a_pre_existing_topic_starts_from_now_not_from_history() {
     })
     .await;
     assert_eq!(ha.hits()[0].body_str(), "h4");
-    let _ = &bridge;
+    let _ = &runner;
 }
 
 #[tokio::test]
@@ -178,17 +178,17 @@ async fn l4_k1_two_routes_run_independently_through_one_outage() {
     let ha_beta = FakeHa::start();
     let config = format!(
         "hub_url = \"{}\"\n\n\
-         [[routes]]\nname = \"alpha\"\ntopic = \"l4.alpha\"\nsubscription = \"ha-bridge\"\n\
+         [[routes]]\nname = \"alpha\"\ntopic = \"l4.alpha\"\nsubscription = \"ha-runner\"\n\
          webhook_url = \"{}\"\n\n\
-         [[routes]]\nname = \"beta\"\ntopic = \"l4.beta\"\nsubscription = \"ha-bridge\"\n\
+         [[routes]]\nname = \"beta\"\ntopic = \"l4.beta\"\nsubscription = \"ha-runner\"\n\
          webhook_url = \"{}\"\n",
         hub.base(),
         ha_alpha.url("/api/webhook/alpha"),
         ha_beta.url("/api/webhook/beta"),
     );
-    let bridge = Bridge::start(&config);
+    let runner = Runner::start(&config);
     wait_until("both first polls", Duration::from_secs(15), || {
-        let log = bridge.log();
+        let log = runner.log();
         log.matches("topic not born yet").count() >= 2
     })
     .await;
@@ -205,7 +205,7 @@ async fn l4_k1_two_routes_run_independently_through_one_outage() {
     let _dead_port = ha_alpha.shut_down();
     publish(&hub, "l4.alpha", "text/plain", "a2").await;
     wait_until("alpha's circuit", Duration::from_secs(60), || {
-        bridge.log().contains("circuit open")
+        runner.log().contains("circuit open")
     })
     .await;
     for body in ["b2", "b3", "b4"] {
@@ -224,22 +224,22 @@ async fn l4_w3_a_hub_refused_policy_warns_once_and_the_route_keeps_delivering() 
     let hub = Hub::start().await;
     let ha = FakeHa::start();
     let topic = "l4.badpolicy";
-    // max_attempts = 0 passes the bridge's own validation (it only
+    // max_attempts = 0 passes the runner's own validation (it only
     // bounds lease_ms) but the hub refuses it with a remedy — the
     // route must warn once and keep running under the hub's defaults.
     let config = route_config(&hub, "badpolicy", topic, &ha.url("/api/webhook/x")).replace(
         "webhook_url =",
         "policy = { max_attempts = 0 }\nwebhook_url =",
     );
-    let bridge = Bridge::start(&config);
-    wait_first_poll(&bridge).await;
+    let runner = Runner::start(&config);
+    wait_first_poll(&runner).await;
     publish(&hub, topic, "text/plain", "still-flows").await;
 
     wait_until(
         "the policy warn + delivery",
         Duration::from_secs(30),
         || {
-            let log = bridge.log();
+            let log = runner.log();
             log.contains("policy PUT failed")
                 && ha.hits().iter().any(|hit| hit.body_str() == "still-flows")
         },
@@ -247,7 +247,7 @@ async fn l4_w3_a_hub_refused_policy_warns_once_and_the_route_keeps_delivering() 
     .await;
     tokio::time::sleep(Duration::from_secs(3)).await;
     assert_eq!(
-        bridge.log().matches("policy PUT failed").count(),
+        runner.log().matches("policy PUT failed").count(),
         1,
         "warn once, then quiet (AR6)"
     );

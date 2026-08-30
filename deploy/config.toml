@@ -1,10 +1,10 @@
-# hub-bridge configuration. The copy in git is the source of truth
-# (M3: state-in-git); the deployed file at /etc/hub-bridge/config.toml
+# kyu-runner configuration. The copy in git is the source of truth
+# (M3: state-in-git); the deployed file at /etc/kyu-runner/config.toml
 # is just a copy — check drift with:
-#   diff deploy/config.toml /etc/hub-bridge/config.toml
+#   diff deploy/config.toml /etc/kyu-runner/config.toml
 #
-# The app token is NOT here: it lives in /etc/hub-bridge/token.env
-# (HUB_BRIDGE_TOKEN=…), root-owned 0600, loaded by the systemd unit.
+# The app token is NOT here: it lives in /etc/kyu-runner/token.env
+# (KYU_RUNNER_TOKEN=…), root-owned 0600, loaded by the systemd unit.
 # This file is committed; a token in it would be a token in git.
 
 # The hub runs on the same LXC, so localhost — never a name that needs
@@ -29,7 +29,7 @@ hub_url = "http://127.0.0.1:8080"
 # healthz_max_connections = 16      # concurrent connections on the observation socket
 # healthz_timeout_ms = 5000         # per-connection timeout there
 
-# W4: uncomment to give Uptime Kuma a direct probe on the bridge.
+# W4: uncomment to give Uptime Kuma a direct probe on the runner.
 # Bind the address Kuma probes (the LXC's LAN address), not 0.0.0.0 —
 # and leave it off entirely when nothing monitors it.
 # healthz_listen = "10.10.10.9:8081"
@@ -40,11 +40,11 @@ hub_url = "http://127.0.0.1:8080"
 # this webhook FIRST, then deploy this route, then run the smoke test
 # (operations runbook) — HA answers 200 even for unknown webhook ids,
 # so a route enabled before its automation acks warnings into the void.
-# Every HA webhook trigger for the bridge sets local_only: true.
+# Every HA webhook trigger for the runner sets local_only: true.
 [[routes]]
 name = "kyu-events"
 topic = "kyu.events"
-subscription = "ha-bridge"
+subscription = "ha-runner"
 webhook_url = "http://homeassistant.lan:8123/api/webhook/hub_kyu_events"
 
 # AR15: ops routes must survive long partial outages — while HA's HTTP

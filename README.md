@@ -1,12 +1,12 @@
-# hub-bridge
+# kyu-runner
 
 A stateless daemon that lets Home Assistant consume from the
 [kyu](https://github.com/kennypassenier/kyu) hub. Per
 configured route it long-polls a topic subscription, POSTs each
 message byte-for-byte to a Home Assistant webhook, and acknowledges
 **only** when HA answers 2xx — so the hub's lease/retry/dead-letter
-machinery works *for* the HA delivery. The bridge holds no state: the
-hub owns every cursor, and killing the bridge at any moment loses
+machinery works *for* the HA delivery. The runner holds no state: the
+hub owns every cursor, and killing the runner at any moment loses
 nothing.
 
 Built and hardened under the dev procedure; not yet released or

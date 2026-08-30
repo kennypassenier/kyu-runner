@@ -1,7 +1,7 @@
 //! E2E support: a real scratch hub (standing rule 9 — the real thing,
 //! never a mock of the hub), a fake HA webhook server (HA cannot be
 //! real in CI — what the fake cannot express is recorded in
-//! TEST_PLAN.md), and a bridge process handle.
+//! TEST_PLAN.md), and a runner process handle.
 
 #![allow(dead_code)]
 
@@ -25,26 +25,60 @@ pub struct Hub {
     data_dir: Option<tempfile::TempDir>,
     binary: Option<PathBuf>,
     token: Option<String>,
+    log_path: Option<PathBuf>,
 }
 
-fn free_port() -> u16 {
-    use std::collections::HashSet;
+/// Reserve a port ACROSS PROCESSES.
+///
+/// `cargo test --all` runs every suite as its own process, so an
+/// in-process set is not enough: two suites probing `:0` at the same
+/// moment can be handed the same port, and whichever binds second dies
+/// with "Address already in use". That is exactly the flake that broke
+/// two commit gates on 2026-08-30. The claim therefore lives in a
+/// shared directory, where `create_new` is the atomic winner-takes-it
+/// primitive every process can see.
+pub fn reserve(port: u16) -> bool {
     use std::sync::OnceLock;
-    // Parallel tests each close their probe listener before the real
-    // process binds; without this set two tests can be handed the same
-    // port and the second hub dies on a bind error.
-    static TAKEN: OnceLock<Mutex<HashSet<u16>>> = OnceLock::new();
-    let taken = TAKEN.get_or_init(|| Mutex::new(HashSet::new()));
-    loop {
+    static DIR: OnceLock<PathBuf> = OnceLock::new();
+    let dir = DIR.get_or_init(|| {
+        let dir = std::env::temp_dir().join("kyu-runner-test-ports");
+        let _ = std::fs::create_dir_all(&dir);
+        // Claims outlive their test run, so sweep the stale ones once
+        // per process; without this the directory would slowly fill
+        // with every ephemeral port the machine ever handed out.
+        if let Ok(entries) = std::fs::read_dir(&dir) {
+            for entry in entries.flatten() {
+                let stale = entry
+                    .metadata()
+                    .and_then(|meta| meta.modified())
+                    .map(|when| when.elapsed().unwrap_or_default() > Duration::from_secs(3600))
+                    .unwrap_or(false);
+                if stale {
+                    let _ = std::fs::remove_file(entry.path());
+                }
+            }
+        }
+        dir
+    });
+    std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(dir.join(port.to_string()))
+        .is_ok()
+}
+
+pub fn free_port() -> u16 {
+    for _ in 0..200 {
         let port = StdTcpListener::bind("127.0.0.1:0")
             .expect("bind ephemeral")
             .local_addr()
             .expect("local addr")
             .port();
-        if taken.lock().unwrap().insert(port) {
+        if reserve(port) {
             return port;
         }
     }
+    panic!("no free port could be reserved after 200 attempts");
 }
 
 fn hub_binary() -> Option<PathBuf> {
@@ -78,6 +112,7 @@ impl Hub {
             data_dir: Some(data_dir),
             binary: hub_binary(),
             token,
+            log_path: None,
         };
         hub.launch();
         hub.wait_ready().await;
@@ -101,13 +136,16 @@ impl Hub {
         let secret_key = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
         let process = match &self.binary {
             Some(binary) => {
+                let log = tempfile::NamedTempFile::new().expect("hub log file");
+                let (log_file, log_path) = log.keep().expect("keep hub log");
+                self.log_path = Some(log_path);
                 let mut command = Command::new(binary);
                 command
                     .env("KYU_LISTEN", &listen)
                     .env("KYU_DATA_DIR", &data)
                     .env("KYU_LOG", "warn")
                     .stdout(Stdio::null())
-                    .stderr(Stdio::null());
+                    .stderr(log_file);
                 if let Some(token) = &self.token {
                     command.env("KYU_TOKEN", token);
                     command.env("KYU_SECRET_KEY", secret_key);
@@ -163,11 +201,21 @@ impl Hub {
             {
                 return;
             }
+            // Loud, not silent: without the hub's own stderr a bind
+            // clash reads as a mysterious timeout (2026-08-30 flake).
             assert!(
                 Instant::now() < deadline,
-                "hub did not become healthy on {url}"
+                "hub did not become healthy on {url}. Its stderr said: {}",
+                self.stderr()
             );
             tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+    }
+
+    fn stderr(&self) -> String {
+        match &self.log_path {
+            Some(path) => std::fs::read_to_string(path).unwrap_or_default(),
+            None => "(not captured)".into(),
         }
     }
 
@@ -354,7 +402,7 @@ pub async fn get_policy(hub: &Hub, topic: &str, subscription: &str) -> String {
 }
 
 /// True once the subscription exists on the hub (its policy endpoint
-/// answers 200) — the deterministic "has the bridge polled yet?" probe
+/// answers 200) — the deterministic "has the runner polled yet?" probe
 /// for topics that already exist at hub start (e.g. kyu.events).
 pub async fn subscription_exists(hub: &Hub, topic: &str, subscription: &str) -> bool {
     reqwest::Client::new()
@@ -426,13 +474,28 @@ pub struct FakeHa {
 
 impl FakeHa {
     pub fn start() -> FakeHa {
-        Self::start_on(free_port())
+        // Bind the reserved port immediately: closing a probe listener
+        // and rebinding later is the window that let two suites collide.
+        let port = free_port();
+        Self::start_on(port)
     }
 
     /// Binding a fixed port lets a test simulate "HA back after an
     /// outage" (AR15): drop one FakeHa, start another on the same port.
+    /// The predecessor's socket may still be releasing, so retry
+    /// briefly instead of failing the test over a millisecond.
     pub fn start_on(port: u16) -> FakeHa {
-        let listener = StdTcpListener::bind(("127.0.0.1", port)).expect("fake HA bind");
+        let mut attempt = 0;
+        let listener = loop {
+            match StdTcpListener::bind(("127.0.0.1", port)) {
+                Ok(listener) => break listener,
+                Err(error) => {
+                    attempt += 1;
+                    assert!(attempt < 50, "fake HA could not bind {port}: {error}");
+                    std::thread::sleep(Duration::from_millis(100));
+                }
+            }
+        };
         listener.set_nonblocking(true).expect("nonblocking");
         let hits = Arc::new(Mutex::new(Vec::new()));
         let mode = Arc::new(Mutex::new(HaMode::Ok200));
@@ -564,45 +627,45 @@ fn find_header_end(raw: &[u8]) -> Option<usize> {
     raw.windows(4).position(|window| window == b"\r\n\r\n")
 }
 
-// ── The bridge under test ───────────────────────────────────────────────
+// ── The runner under test ───────────────────────────────────────────────
 
-pub struct Bridge {
+pub struct Runner {
     pub child: Child,
     pub log_path: PathBuf,
     _config: tempfile::NamedTempFile,
 }
 
-impl Bridge {
-    pub fn start(config_text: &str) -> Bridge {
+impl Runner {
+    pub fn start(config_text: &str) -> Runner {
         Self::start_with_env(config_text, &[])
     }
 
-    pub fn start_with_env(config_text: &str, env: &[(&str, &str)]) -> Bridge {
+    pub fn start_with_env(config_text: &str, env: &[(&str, &str)]) -> Runner {
         let mut config = tempfile::NamedTempFile::new().expect("config file");
         config
             .write_all(config_text.as_bytes())
             .expect("write config");
         let log = tempfile::NamedTempFile::new().expect("log file");
         let (log_file, log_path) = log.keep().expect("keep log");
-        // BRIDGE_BIN lets the release workflow run this suite against
+        // KYU_RUNNER_BIN lets the release workflow run this suite against
         // the musl artifact — the shipped binary is the tested binary
         // (T8/M1).
-        let binary =
-            std::env::var("BRIDGE_BIN").unwrap_or_else(|_| env!("CARGO_BIN_EXE_hub-bridge").into());
+        let binary = std::env::var("KYU_RUNNER_BIN")
+            .unwrap_or_else(|_| env!("CARGO_BIN_EXE_kyu-runner").into());
         let mut command = Command::new(binary);
         command
             .arg("--config")
             .arg(config.path())
             // Crate-scoped debug: hyper/reqwest connect spam would break
             // the K7 log-volume bound and drown the assertions.
-            .env("HUB_BRIDGE_LOG", "info,hub_bridge=debug")
+            .env("KYU_RUNNER_LOG", "info,kyu_runner=debug")
             .stdout(Stdio::null())
             .stderr(log_file);
         for (name, value) in env {
             command.env(name, value);
         }
-        let child = command.spawn().expect("spawn bridge");
-        Bridge {
+        let child = command.spawn().expect("spawn runner");
+        Runner {
             child,
             log_path,
             _config: config,
@@ -640,7 +703,7 @@ impl Bridge {
     }
 }
 
-impl Drop for Bridge {
+impl Drop for Runner {
     fn drop(&mut self) {
         self.kill_hard();
         let _ = std::fs::remove_file(&self.log_path);
@@ -652,20 +715,20 @@ impl Drop for Bridge {
 pub fn route_config(hub: &Hub, name: &str, topic: &str, webhook_url: &str) -> String {
     format!(
         "hub_url = \"{}\"\n\n[[routes]]\nname = \"{name}\"\ntopic = \"{topic}\"\n\
-         subscription = \"ha-bridge\"\nwebhook_url = \"{webhook_url}\"\n",
+         subscription = \"ha-runner\"\nwebhook_url = \"{webhook_url}\"\n",
         hub.base()
     )
 }
 
-/// Wait until the bridge has polled a not-yet-born topic once (the
-/// AR16 log line). Publishing before the bridge's first poll would
-/// create the topic under the bridge's feet and the subscription would
+/// Wait until the runner has polled a not-yet-born topic once (the
+/// AR16 log line). Publishing before the runner's first poll would
+/// create the topic under the runner's feet and the subscription would
 /// start "from now" — the documented boundary the runbook orders
 /// around ("route first, then producers").
-pub async fn wait_first_poll(bridge: &Bridge) {
-    let log = || bridge.log();
+pub async fn wait_first_poll(runner: &Runner) {
+    let log = || runner.log();
     wait_until(
-        "the bridge's first poll (topic not born line)",
+        "the runner's first poll (topic not born line)",
         Duration::from_secs(15),
         || log().contains("topic not born"),
     )

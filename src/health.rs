@@ -73,22 +73,22 @@ impl HealthState {
     pub fn render_metrics(&self) -> String {
         let routes = self.routes.lock().expect("health lock");
         let mut out = String::from(
-            "# HELP hub_bridge_delivered_total Messages delivered to the webhook and settled.\n\
-             # TYPE hub_bridge_delivered_total counter\n",
+            "# HELP kyu_runner_delivered_total Messages delivered to the webhook and settled.\n\
+             # TYPE kyu_runner_delivered_total counter\n",
         );
         for (name, slot) in routes.iter() {
             out.push_str(&format!(
-                "hub_bridge_delivered_total{{route=\"{name}\"}} {}\n",
+                "kyu_runner_delivered_total{{route=\"{name}\"}} {}\n",
                 slot.delivered
             ));
         }
         out.push_str(
-            "# HELP hub_bridge_nacked_total Deliveries handed back to the hub (nacked).\n\
-             # TYPE hub_bridge_nacked_total counter\n",
+            "# HELP kyu_runner_nacked_total Deliveries handed back to the hub (nacked).\n\
+             # TYPE kyu_runner_nacked_total counter\n",
         );
         for (name, slot) in routes.iter() {
             out.push_str(&format!(
-                "hub_bridge_nacked_total{{route=\"{name}\"}} {}\n",
+                "kyu_runner_nacked_total{{route=\"{name}\"}} {}\n",
                 slot.nacked
             ));
         }

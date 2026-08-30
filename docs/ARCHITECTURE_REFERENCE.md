@@ -1,4 +1,4 @@
-# Architecture reference — hub-bridge
+# Architecture reference — kyu-runner
 
 The system as built (Phase 8). The decisions live in
 ARCHITECTURE_DECISIONS.md; this is how they landed in code.
@@ -80,7 +80,7 @@ these values as defaults; the rows marked *pinned* are constants in
 | 1 s → 60 s | circuit probe backoff — `circuit_probe_ms` / `circuit_probe_max_ms` | AR15 |
 | 5 s | route respawn pause after a panic — `route_respawn_ms` | AR1 |
 | max webhook timeout + 5 s | derived shutdown grace | AR9 — an in-flight delivery always fits |
-| 16 MiB | `max_body_bytes` default (min 1024) | F1 — a hub cannot OOM the bridge; `MemoryMax=128M` in the unit as backstop |
+| 16 MiB | `max_body_bytes` default (min 1024) | F1 — a hub cannot OOM the runner; `MemoryMax=128M` in the unit as backstop |
 | 5 s / 16 | healthz per-connection timeout / concurrent connections — `healthz_timeout_ms` / `healthz_max_connections` | F2 — a probe port cannot starve the pump |
 
 ## Supervision and shutdown

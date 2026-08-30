@@ -1,4 +1,4 @@
-# hub-bridge
+# kyu-runner
 
 A stateless Rust daemon that lets Home Assistant consume from the
 kyu hub: long-poll configured topics, forward each message to an

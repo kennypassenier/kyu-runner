@@ -183,11 +183,11 @@ impl RouteRunner {
                     // AR1 supervision drill hook: debug builds only, so
                     // the release binary cannot carry the trigger.
                     #[cfg(debug_assertions)]
-                    if std::env::var("HUB_BRIDGE_TEST_PANIC_ROUTE").as_deref() == Ok(name.as_str())
+                    if std::env::var("KYU_RUNNER_TEST_PANIC_ROUTE").as_deref() == Ok(name.as_str())
                     {
                         // The supervisor must respawn the loop; the
                         // unacked claim redelivers (K5).
-                        unsafe { std::env::remove_var("HUB_BRIDGE_TEST_PANIC_ROUTE") };
+                        unsafe { std::env::remove_var("KYU_RUNNER_TEST_PANIC_ROUTE") };
                         panic!("test-injected route panic (AR1 drill)");
                     }
                     match self

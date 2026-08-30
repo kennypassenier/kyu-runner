@@ -1,9 +1,9 @@
-# Operations runbook — hub-bridge
+# Operations runbook — kyu-runner
 
 Numbered procedures. Written at L5, re-validated in Phase 8. The
 deployment target is **an LXC on the Proxmox host — which one is
 Kenny's still-open call** (`<target-lxc>` below). The kyu hub runs on
-LXC 109 (`10.10.10.9`) as a native binary under systemd; the bridge
+LXC 109 (`10.10.10.9`) as a native binary under systemd; the runner
 follows the same pattern, wherever it lands.
 
 Reality checks baked into these procedures (from the Phase 4 critic):
@@ -14,7 +14,7 @@ Reality checks baked into these procedures (from the Phase 4 critic):
   *automation first, route second, smoke test third.*
 - **A policy write replaces every field** (kyu K7). The
   `[routes.policy]` block in git is the whole policy: any tweak made
-  on the hub dashboard is reverted the next time the bridge starts.
+  on the hub dashboard is reverted the next time the runner starts.
   Change policies in `deploy/config.toml`, not on the dashboard.
 - **The release binary is static musl**: it resolves names via DNS
   only — no mDNS/Avahi. Use router-DNS names or IPs in
@@ -30,30 +30,30 @@ Reality checks baked into these procedures (from the Phase 4 critic):
 > `python3 -c 'import urllib.request;print(urllib.request.urlopen("http://127.0.0.1:8080/healthz",timeout=3).read().decode())'`
 
 1. Build or download the artifact:
-   - from a release: download `hub-bridge-x86_64-linux-musl` +
+   - from a release: download `kyu-runner-x86_64-linux-musl` +
      `SHA256SUMS` from the GitHub release, then `sha256sum -c SHA256SUMS`;
    - or locally: `scripts/build-release.sh` (same artifact + manifest).
 2. Copy it in place:
-   `scp hub-bridge-x86_64-linux-musl root@<target-lxc>:/usr/local/bin/hub-bridge`
-   and `chmod 755 /usr/local/bin/hub-bridge`.
+   `scp kyu-runner-x86_64-linux-musl root@<target-lxc>:/usr/local/bin/kyu-runner`
+   and `chmod 755 /usr/local/bin/kyu-runner`.
 3. **HA side first (K6):** create the webhook automation(s) in HA for
    every route you are about to enable — see §6. Every webhook trigger
    sets `local_only: true`.
 4. Mint the app token: hub dashboard → `/apps` → register
-   `hub-bridge` → copy the token. On the target LXC (the `read -rs` keeps the
+   `kyu-runner` → copy the token. On the target LXC (the `read -rs` keeps the
    token out of the shell history — standing rule 10):
    ```
-   install -m 600 /dev/null /etc/hub-bridge/token.env
-   read -rs TOKEN && printf 'HUB_BRIDGE_TOKEN=%s\n' "$TOKEN" > /etc/hub-bridge/token.env && unset TOKEN
+   install -m 600 /dev/null /etc/kyu-runner/token.env
+   read -rs TOKEN && printf 'KYU_RUNNER_TOKEN=%s\n' "$TOKEN" > /etc/kyu-runner/token.env && unset TOKEN
    ```
-5. Config: `mkdir -p /etc/hub-bridge` and copy `deploy/config.toml`
-   to `/etc/hub-bridge/config.toml`. Verify:
-   `/usr/local/bin/hub-bridge --config /etc/hub-bridge/config.toml --check-config`
-6. Unit: copy `deploy/hub-bridge.service` to
-   `/etc/systemd/system/hub-bridge.service`, then
-   `systemctl daemon-reload && systemctl enable --now hub-bridge`.
-7. Read it back (standing rule 13a): `systemctl status hub-bridge`
-   and `journalctl -u hub-bridge -n 20` — expect the "hub-bridge
+5. Config: `mkdir -p /etc/kyu-runner` and copy `deploy/config.toml`
+   to `/etc/kyu-runner/config.toml`. Verify:
+   `/usr/local/bin/kyu-runner --config /etc/kyu-runner/config.toml --check-config`
+6. Unit: copy `deploy/kyu-runner.service` to
+   `/etc/systemd/system/kyu-runner.service`, then
+   `systemctl daemon-reload && systemctl enable --now kyu-runner`.
+7. Read it back (standing rule 13a): `systemctl status kyu-runner`
+   and `journalctl -u kyu-runner -n 20` — expect the "kyu-runner
    started" line with the route count, and per route either polling
    silence or a quiet "topic not born yet" line.
 8. **Smoke test per route (mandatory):** publish a test message on the
@@ -65,27 +65,27 @@ Reality checks baked into these procedures (from the Phase 4 critic):
 ## 2 · Update
 
 1. Download + verify the new artifact (install step 1).
-2. `systemctl stop hub-bridge` — in-flight deliveries finish within
+2. `systemctl stop kyu-runner` — in-flight deliveries finish within
    the grace; unacked messages redeliver (K5), so nothing is lost.
-3. Replace `/usr/local/bin/hub-bridge`, keep the old binary as
-   `/usr/local/bin/hub-bridge.prev` until the new one is seen running.
-4. `systemctl start hub-bridge`; read back per install step 7.
+3. Replace `/usr/local/bin/kyu-runner`, keep the old binary as
+   `/usr/local/bin/kyu-runner.prev` until the new one is seen running.
+4. `systemctl start kyu-runner`; read back per install step 7.
 
 ## 3 · Restore from zero (M3 — drilled in Phase 7)
 
-The bridge's full state is: the binary (releases), the config + unit
+The runner's full state is: the binary (releases), the config + unit
 (this repo), and the token (re-mintable). Nothing else exists.
 
 1. Install the binary (install steps 1-2).
-2. Copy `deploy/config.toml` and `deploy/hub-bridge.service` from this
+2. Copy `deploy/config.toml` and `deploy/kyu-runner.service` from this
    repo (they ARE the backup — check drift first if the old machine
-   still answers: `diff deploy/config.toml /etc/hub-bridge/config.toml`).
+   still answers: `diff deploy/config.toml /etc/kyu-runner/config.toml`).
 3. Re-mint the token on the hub's `/apps` page (revoke the old
-   `hub-bridge` app if it is still listed), write `token.env`
+   `kyu-runner` app if it is still listed), write `token.env`
    (install step 4).
 4. Enable + start + read back (install steps 6-7); smoke test one
    route (install step 8).
-5. Backlog: nothing to do — the hub owns all cursors; the new bridge
+5. Backlog: nothing to do — the hub owns all cursors; the new runner
    resumes every subscription where the old one stopped.
 
 ## 4 · P8 wiring (K11)
@@ -93,12 +93,12 @@ The bridge's full state is: the binary (releases), the config + unit
 1. **Uptime Kuma → hub:** add an HTTP(s) monitor on
    `http://10.10.10.9:8080/healthz`, expect 200. The endpoint stays
    open on a token-protected hub.
-2. **Uptime Kuma → bridge (optional, W4):** uncomment
+2. **Uptime Kuma → runner (optional, W4):** uncomment
    `healthz_listen` in the config — bind the address Kuma actually
    probes (`<target-lxc>:8081`), or leave it commented out when unused:
    any LAN device can reach an open listener, and less surface is less
    surface. Restart, add a monitor on `http://<target-lxc>:8081/healthz`.
-   Without it, a dead bridge still surfaces via the hub's
+   Without it, a dead runner still surfaces via the hub's
    idle-subscription flag and the `kyu.events` route.
 3. **Grafana → sweeper alert:** the hub's `/metrics` exposes
    `kyu_sweeper_age_ms` — the one series that catches the hub
@@ -110,14 +110,14 @@ The bridge's full state is: the binary (releases), the config + unit
 ## 5 · Adding, renaming or removing a route
 
 1. Edit `deploy/config.toml` in the repo (git is the truth), copy to
-   `/etc/hub-bridge/config.toml`, `--check-config`, restart.
+   `/etc/kyu-runner/config.toml`, `--check-config`, restart.
 2. **Adding:** HA automation first, then the route, then the smoke
    test (§1 steps 3/8). If producers were already publishing to the
    topic before the route existed, the subscription starts *from now*;
    pull the retained backlog once, deliberately, with:
    `curl "http://10.10.10.9:8080/t/<topic>/next?as=<sub>&wait=0&from=beginning"`
    — repeated until 204, or leave history behind on purpose.
-   (A topic that does not exist yet is the easy case: the bridge waits
+   (A topic that does not exist yet is the easy case: the runner waits
    quietly and replays its birth messages automatically, AR16.)
 3. **Renaming/removing:** the old subscription stays behind on the
    hub, pins retention for up to 30 days, then archives as `lapsed`

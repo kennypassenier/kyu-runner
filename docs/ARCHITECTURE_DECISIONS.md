@@ -1,11 +1,11 @@
-# Architecture decisions — hub-bridge
+# Architecture decisions — kyu-runner
 
 Phases 3-4 output. T = tech choice, AR = architecture.
 
 > **FROZEN 2026-08-29** by Kenny (ratification form 2): AR1-AR17
 > confirmed; changes go through mini-rounds only. One dated amendment
 > was recorded at the freeze itself: AR11 (see there). The platform
-> question was answered at the same gate: the bridge will run on **an
+> question was answered at the same gate: the runner will run on **an
 > LXC on the Proxmox host, which one is deliberately not yet chosen**
 > (x86_64 Linux; the earlier LXC-109 assumption is thereby replaced),
 > and Kenny authorized deployment testing on a **scratch LXC**.
@@ -37,8 +37,8 @@ Phases 3-4 output. T = tech choice, AR = architecture.
   typo'd key is a startup error with a remedy, never silently ignored
   (standing rule 12: no silent fallbacks).
 - **T5 · Logging: tracing + tracing-subscriber** (`env-filter`,
-  `json`). `HUB_BRIDGE_LOG` filter, `HUB_BRIDGE_LOG_FORMAT=json` for
-  Loki — the hub's exact convention with the bridge's prefix.
+  `json`). `KYU_RUNNER_LOG` filter, `KYU_RUNNER_LOG_FORMAT=json` for
+  Loki — the hub's exact convention with the runner's prefix.
 - **T6 · Errors: thiserror** for typed config/validation errors,
   **anyhow** context at the binary edge. Every message carries a
   remedy (standing rule 11).
@@ -48,7 +48,7 @@ Phases 3-4 output. T = tech choice, AR = architecture.
 - **T8 · Platform & targets.** Dev + CI: `x86_64-unknown-linux-gnu`.
   Release artifact: **`x86_64-unknown-linux-musl`, statically linked** —
   LXC 109's libc is not this Arch machine's libc, and a static binary
-  removes the whole class (the bridge needs no C dependencies; there is
+  removes the whole class (the runner needs no C dependencies; there is
   no sqlite here). **Platform answered at ratification (2026-08-29):**
   an LXC on the Proxmox host, which one deliberately TBD — the static
   musl artifact keeps every Debian-ish LXC in reach; scratch-LXC
@@ -82,18 +82,18 @@ Phases 3-4 output. T = tech choice, AR = architecture.
   (3xx included, AR17), timeout, connect error — is retried
   **in-process on the same claim** with a short backoff (1/2/4/8 s)
   while the lease budget allows (AR5); only when the budget is
-  exhausted does the bridge nack **without** `dead=true`, handing the
+  exhausted does the runner nack **without** `dead=true`, handing the
   message back to the hub's backoff/retry/DLQ machinery (K4). A
   connect-class failure additionally opens the route's circuit
   breaker (AR15). If the nack itself fails (hub vanished mid-settle),
-  do nothing: the lease expiry redelivers (kyu K5). The bridge
+  do nothing: the lease expiry redelivers (kyu K5). The runner
   never sends a poison pill — payload-agnostic code cannot judge
   payloads. ⚔ *Critic (adopted):* with hub defaults (5 attempts,
   linear 1 s backoff) the draft's nack-per-failure dead-lettered every
   message ~10-15 s into an HA outage — a routine HA update would have
   killed the entire backlog on every route.
 - **AR4 · Raw mode, not `envelope=json`.** The payload arrives as the
-  raw body with metadata in `kyu-*` response headers; the bridge
+  raw body with metadata in `kyu-*` response headers; the runner
   forwards body + `content-type` byte-for-byte and passes the
   `kyu-id`, `kyu-topic`, `kyu-attempt`,
   `kyu-published-at` headers through on the webhook POST. No
@@ -123,15 +123,15 @@ Phases 3-4 output. T = tech choice, AR = architecture.
   been born yet; kyu creates topics on first publish) is a
   **quiet wait state**: one transition line, a 5 s re-poll, no error
   spam.
-- **AR7 · Token.** `HUB_BRIDGE_TOKEN` from the environment, injected
+- **AR7 · Token.** `KYU_RUNNER_TOKEN` from the environment, injected
   via a root-owned 0600 systemd `EnvironmentFile`
-  (`/etc/hub-bridge/token.env`). Sent as `authorization: Bearer` on
+  (`/etc/kyu-runner/token.env`). Sent as `authorization: Bearer` on
   every hub request. Never logged, never in argv, never in the config
   file (which lives in git — standing rule 10); a redaction test
   asserts it. A hub without a door (dev/scratch) works with the
   variable absent; a 401 from the hub logs a remedy naming the `/apps`
   page.
-- **AR8 · Config schema** (`/etc/hub-bridge/config.toml`, in git as
+- **AR8 · Config schema** (`/etc/kyu-runner/config.toml`, in git as
   `deploy/config.toml`):
 
   ```toml
@@ -145,7 +145,7 @@ Phases 3-4 output. T = tech choice, AR = architecture.
   [[routes]]
   name = "kyu-events"             # required, unique; the log/health handle
   topic = "kyu.events"
-  subscription = "ha-bridge"
+  subscription = "ha-runner"
   webhook_url = "http://homeassistant.lan:8123/api/webhook/hub_kyu_events"
   # webhook_timeout_ms = 5000         # per-route override
   # [routes.policy]                   # W3: applied to the hub at startup
@@ -168,11 +168,11 @@ Phases 3-4 output. T = tech choice, AR = architecture.
   Reports `{status, routes: [{name, state}]}`; route names only, never
   payloads, never the token.
 - **AR11 · No TLS, LAN only** *(amended at ratification, 2026-08-29)*.
-  Mirrors the hub's N3. The bridge is never exposed beyond the LAN;
+  Mirrors the hub's N3. The runner is never exposed beyond the LAN;
   documented loudly in the runbook. **Amendment (Kenny, form 2,
   "Aanpassen"):** https traffic via Traefik may appear in the future.
   Recorded consequences: (1) *inbound* TLS (e.g. `/healthz` or
-  `/metrics` behind Traefik) needs **no bridge change** — Traefik
+  `/metrics` behind Traefik) needs **no runner change** — Traefik
   terminates TLS and forwards plain HTTP; (2) *outbound* https (a
   `webhook_url` or `hub_url` behind a TLS-terminating Traefik) is the
   real trigger: the moment such a concrete URL exists, a **mini-round**
@@ -213,7 +213,7 @@ Phases 3-4 output. T = tech choice, AR = architecture.
   kyu creates a topic on first publish and a subscription on its
   first poll, and a subscription only sees what follows its creation —
   so the first message on a brand-new topic would fall between the
-  bridge's 404 and its next poll, permanently. Therefore: after a
+  runner's 404 and its next poll, permanently. Therefore: after a
   route has seen 404 (`UnknownTopic`), its next successful poll
   carries `from=beginning`, which backfills the just-born topic's
   retained messages (idempotent and bounded — the topic is seconds
@@ -243,6 +243,6 @@ Phases 3-4 output. T = tech choice, AR = architecture.
   `redirect::Policy::none()`; any 3xx is a delivery failure. ⚔
   *Critic (adopted):* reqwest's default policy follows a 302 by
   converting POST to a body-less GET, which HA can answer 200 — the
-  bridge would then ack a message whose payload never arrived. K8
+  runner would then ack a message whose payload never arrived. K8
   already refuses `https://` URLs with a remedy naming the no-TLS
   build (T3/AR11).

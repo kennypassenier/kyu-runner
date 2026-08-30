@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# hub-bridge quality gates (standing rules 6/7): format, lint with
+# kyu-runner quality gates (standing rules 6/7): format, lint with
 # warnings as errors, full test suite. Called by .githooks/pre-commit
 # and .claude/hooks/check-commit.sh; non-zero exit blocks the commit.
 set -euo pipefail

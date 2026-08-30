@@ -7,8 +7,8 @@ cd "$(git rev-parse --show-toplevel)"
 
 cargo build --release --target x86_64-unknown-linux-musl
 
-out=target/x86_64-unknown-linux-musl/release/hub-bridge
-cp "$out" hub-bridge-x86_64-linux-musl
-sha256sum hub-bridge-x86_64-linux-musl > SHA256SUMS
-echo "artifact: hub-bridge-x86_64-linux-musl"
+out=target/x86_64-unknown-linux-musl/release/kyu-runner
+cp "$out" kyu-runner-x86_64-linux-musl
+sha256sum kyu-runner-x86_64-linux-musl > SHA256SUMS
+echo "artifact: kyu-runner-x86_64-linux-musl"
 cat SHA256SUMS

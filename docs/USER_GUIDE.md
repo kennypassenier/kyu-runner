@@ -1,15 +1,15 @@
-# hub-bridge — user guide
+# kyu-runner — user guide
 
-Everything the bridge does, one feature at a time. Written in Phase 8
+Everything the runner does, one feature at a time. Written in Phase 8
 from the code and tests, not from intent: every claim names where it
 is proven.
 
-**If you have three minutes:** the bridge is a stateless pump. You
+**If you have three minutes:** the runner is a stateless pump. You
 give it routes — `{topic, subscription, webhook_url}` — in one TOML
 file. Per route it long-polls the kyu hub, POSTs each message
 byte-for-byte to the Home Assistant webhook, and acks **only** when HA
 answers 2xx. Everything else (retries, backoff, dead letters) is the
-hub's machinery, kept working *for* the HA delivery. Kill the bridge
+hub's machinery, kept working *for* the HA delivery. Kill the runner
 whenever you like; the hub owns every cursor.
 
 ---
@@ -24,7 +24,7 @@ hub_url = "http://127.0.0.1:8080"
 [[routes]]
 name = "kyu-events"          # the log/health handle, unique
 topic = "kyu.events"
-subscription = "ha-bridge"
+subscription = "ha-runner"
 webhook_url = "http://homeassistant.lan:8123/api/webhook/hub_kyu_events"
 ```
 
@@ -40,7 +40,7 @@ in flight — that is what keeps a backlog draining in publish order.
 The payload reaches HA exactly as it was published — bytes, not a
 string round-trip — with the original `content-type` and the
 `kyu-id`, `kyu-topic`, `kyu-attempt` and
-`kyu-published-at` headers passed through. The bridge never parses
+`kyu-published-at` headers passed through. The runner never parses
 a payload (scope NG2): the envelope schema is somebody else's contract.
 
 **Proven by:** `l2_k1_k2_k3_ar16_the_pump_delivers_byte_for_byte_and_acks`,
@@ -60,9 +60,9 @@ arrived (AR17).
 
 A failing delivery is first retried in-process on the same claim
 (1/2/4/8 s pauses) while the lease budget allows; only then does the
-bridge nack, handing the message to the hub's backoff/retry. When the
+runner nack, handing the message to the hub's backoff/retry. When the
 attempts run out, the message dead-letters **visibly** on the hub
-dashboard, with a Requeue button. The bridge never poison-pills — it
+dashboard, with a Requeue button. The runner never poison-pills — it
 cannot judge a payload it refuses to read.
 
 **Proven by:** `l2_s1_a_500_from_ha_is_not_acked_and_the_message_returns`,
@@ -95,7 +95,7 @@ the 5xx boundary inside `l2_s1_a_500_from_ha_is_not_acked_and_the_message_return
 
 ### K7 · Hub down
 
-The bridge idles and reconnects with backoff (0.5 s doubling to 30 s).
+The runner idles and reconnects with backoff (0.5 s doubling to 30 s).
 One log line when the hub goes away, one when it returns — never a
 line per failed poll.
 
@@ -103,7 +103,7 @@ line per failed poll.
 
 ### AR16 · New topics
 
-A topic that does not exist yet is a quiet wait state: the bridge
+A topic that does not exist yet is a quiet wait state: the runner
 polls every 5 s, and when the topic is born its **first** messages are
 replayed from the beginning — nothing falls in the gap between birth
 and subscription. A topic that already existed before the route's
@@ -125,7 +125,7 @@ claim redelivers on its own.
 ### Oversize messages
 
 Bodies above `max_body_bytes` (default 16 MiB) are never buffered or
-forwarded: the bridge nacks them unread and they dead-letter visibly.
+forwarded: the runner nacks them unread and they dead-letter visibly.
 
 **Proven by:** `l2_f1_an_oversize_message_is_nacked_and_dead_letters_without_oom`.
 
@@ -135,7 +135,7 @@ forwarded: the bridge nacks them unread and they dead-letter visibly.
 
 ### K8 · Fail-closed
 
-An invalid config never half-starts the bridge: unknown keys, missing
+An invalid config never half-starts the runner: unknown keys, missing
 routes, duplicate names or `{topic, subscription}` pairs, unusable
 URLs (no host, credentials, non-http), out-of-range timings and
 unencodable policy values are all startup errors — each with a remedy
@@ -174,9 +174,9 @@ max_attempts = 25
 
 The block is forwarded verbatim to the hub after the route's first
 successful poll (the poll is what creates the subscription); the hub
-validates it and the bridge logs the hub's "values in force" answer.
+validates it and the runner logs the hub's "values in force" answer.
 **A policy write replaces every field** — the config block IS the
-whole policy, and a bridge restart reverts dashboard tweaks. A policy
+whole policy, and a runner restart reverts dashboard tweaks. A policy
 the hub refuses is warned once; the route keeps running under the
 hub's defaults.
 
@@ -231,8 +231,8 @@ the health socket's accept pause (a busy-loop guard).
 ### W6 · Metrics
 
 The same socket serves `/metrics`: Prometheus counters
-`hub_bridge_delivered_total{route=…}` (delivered to the webhook and
-settled) and `hub_bridge_nacked_total{route=…}` (handed back to the
+`kyu_runner_delivered_total{route=…}` (delivered to the webhook and
+settled) and `kyu_runner_nacked_total{route=…}` (handed back to the
 hub). Route labels are the K8-restricted route names, so nothing needs
 escaping. Note the house currently has no Prometheus backend to scrape
 it — the endpoint is ready for the day one exists.
@@ -246,8 +246,8 @@ it — the endpoint is ready for the day one exists.
 ### The CLI (W2)
 
 ```
-hub-bridge [--config <path>] [--check-config]
-hub-bridge --version | --help
+kyu-runner [--config <path>] [--check-config]
+kyu-runner --version | --help
 ```
 
 `--check-config` validates and exits — zero network calls, which is
@@ -262,9 +262,9 @@ is not up yet.
 ### K9 · The token
 
 ```
-HUB_BRIDGE_TOKEN       app token, minted on the hub's /apps page
-HUB_BRIDGE_LOG         log filter (default: info)
-HUB_BRIDGE_LOG_FORMAT  "json" for one JSON object per line (Loki)
+KYU_RUNNER_TOKEN       app token, minted on the hub's /apps page
+KYU_RUNNER_LOG         log filter (default: info)
+KYU_RUNNER_LOG_FORMAT  "json" for one JSON object per line (Loki)
 ```
 
 The token lives in the environment (the unit's `EnvironmentFile`),
@@ -291,13 +291,13 @@ see TEST_PLAN.md.
 ### K6 · The shipped kyu.events route · K10/K11 · Deployment
 
 `deploy/config.toml` ships the P8 route (hub events → HA warning
-webhook) and `deploy/hub-bridge.service` the hardened unit;
+webhook) and `deploy/kyu-runner.service` the hardened unit;
 `docs/OPERATIONS_RUNBOOK.md` holds the numbered install, update,
 restore and monitoring procedures — including the one rule that
 matters most: **HA automation first, then the route, then the smoke
 test**, because HA answers 200 even for unknown webhook ids.
 
 **Proven by:** `l4_k6_a_dead_letter_event_reaches_the_warning_webhook`
-(a real sweeper-emitted event through the bridge into the webhook);
+(a real sweeper-emitted event through the runner into the webhook);
 deployment procedures are drilled, not unit-tested — see
 TEST_PLAN.md and the DRILL-OK record in REALIZATION_PLAN.md.

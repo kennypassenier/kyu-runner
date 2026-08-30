@@ -1,16 +1,17 @@
-# Test plan — hub-bridge
+# Test plan — kyu-runner
 
 Phase 7 output. What is proven where, what each test double cannot
 express, and what is not covered **by decision**. Maintained from here
 on; the AFK ratification round (PENDING_MINI_ROUNDS.md) may still move
 items between "covered" and "accepted".
 
-## The suites (57 tests)
+## The suites (66 tests)
 
 | Suite | Scope |
 |---|---|
 | `src/config.rs` unit tests (27) | K8 fail-closed validation, one test per rule, every rejection asserted to carry a remedy; AR5 lease-budget math; W3 policy JSON rendering; the shipped `deploy/config.toml` parses. |
 | `src/route.rs` unit tests (2) | AR6 backoff shape (doubling, cap, bounded jitter, reset). |
+| `tests/l0_harness.rs` (2) | The harness's own port-reservation mechanism — a flaky harness is a broken gate. |
 | `tests/l1_check_config.rs` (6) | W2 at the binary boundary: exit codes, remedies, `--version`, and the no-network guarantee (a held listener proves `--check-config` never connects). |
 | `tests/l2_pump.rs` (11) | The pump E2E against a **real hub** (binary or docker image): S1-S4, byte-for-byte incl. a non-UTF-8 payload and all four metadata headers, AR15 circuit (both halves: connect-class opens it, a 500 does not), AR16 birth replay, AR17 redirect refusal, F1 oversize cap → dead letter, token/payload log hygiene at trace level in both log formats, 401 remedy without flooding. |
 | `tests/l3_resilience.rs` (4) | K7 hub stop/start drill with a bounded log-volume window; W1 SIGTERM mid-delivery and SIGINT; AR1 panic → supervisor respawn → message survives. |
@@ -38,6 +39,24 @@ gap audit; the two CLI-surface tests are tagged W2).
   beyond `KYU_MAX_BODY_BYTES`) are covered by code paths (cap,
   sanitisation, charset checks) whose hostile halves are argued, not
   executed. Recorded as the price of rule 9.
+
+## Harness defects found and fixed
+
+**2026-08-30 — the port race that broke two commit gates.** `cargo test
+--all` runs every suite as its own process, but the port helper only
+remembered its claims *within* one process: two suites probing an
+ephemeral port at the same moment were handed the same number, and
+whichever bound second died. It surfaced as an unexplained flake in a
+different suite each time, which is exactly how a harness defect
+disguises itself as a product defect. Fixed three ways: the claim moved
+to a file in a shared directory (`create_new` is atomic across
+processes, and stale claims are swept hourly), the fake HA now binds
+its port immediately instead of probing and rebinding, and a hub that
+fails to start prints **its own stderr** in the assertion instead of a
+mute "did not become healthy". Regression tests:
+`l0_a_port_can_only_be_reserved_once`,
+`l0_free_ports_are_never_handed_out_twice`. Verified by three
+consecutive full-gate runs, all green.
 
 ## Not covered, by decision (pending Kenny's ratification, Q11)
 
