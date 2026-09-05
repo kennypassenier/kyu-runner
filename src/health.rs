@@ -1,14 +1,15 @@
-//! W4/AR10 + W6: the opt-in observation socket. Hand-rolled minimal
-//! HTTP over a tokio listener — two endpoints do not justify a web
-//! framework. `/healthz` reports route names and loop states,
-//! `/metrics` the W6 Prometheus counters; never payloads, never the
-//! token. Route names are K8-restricted to `[A-Za-z0-9._-]`, so the
-//! hand-built JSON and metric labels cannot need escaping.
+//! W4/AR10 + W6: what the pump reports about itself. Since the chassis
+//! migration the kit serves `/healthz` and `/metrics`; this module keeps
+//! the per-route state and counters and hands them to the kit as one
+//! `Subsystem` per route and one `ScrapeSource` (metric names unchanged:
+//! `kyu_runner_delivered_total`, `kyu_runner_nacked_total`). Never
+//! payloads, never the token. Route names are K8-restricted to
+//! `[A-Za-z0-9._-]`, so the metric labels cannot need escaping.
 
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use chassis::{ScrapeSource, Subsystem, SubsystemStatus};
 
 struct RouteSlot {
     state: &'static str,
@@ -60,6 +61,16 @@ impl HealthState {
         }
     }
 
+    /// The loop state the pump last reported for `route`.
+    pub fn state_of(&self, route: &str) -> &'static str {
+        self.routes
+            .lock()
+            .expect("health lock")
+            .get(route)
+            .map(|slot| slot.state)
+            .unwrap_or("unknown")
+    }
+
     pub fn render_health(&self) -> String {
         let routes = self.routes.lock().expect("health lock");
         let items: Vec<String> = routes
@@ -96,60 +107,42 @@ impl HealthState {
     }
 }
 
-pub async fn serve(
-    listener: tokio::net::TcpListener,
-    state: Arc<HealthState>,
-    max_connections: usize,
-    timeout: std::time::Duration,
-) {
-    // Security F2: a liveness probe must not be the easiest way to
-    // starve the process of fds — bound the concurrent connections,
-    // time-limit each one, and never busy-spin on accept errors.
-    let permits = Arc::new(tokio::sync::Semaphore::new(max_connections));
-    loop {
-        let (mut stream, _) = match listener.accept().await {
-            Ok(accepted) => accepted,
-            Err(_) => {
-                // EMFILE returns immediately; sleeping keeps fd
-                // exhaustion from becoming a CPU spin as well.
-                tokio::time::sleep(crate::config::HEALTH_ACCEPT_PAUSE).await;
-                continue;
-            }
-        };
-        let Ok(permit) = Arc::clone(&permits).try_acquire_owned() else {
-            // Over the cap: drop the connection rather than queue it.
-            continue;
-        };
-        let state = Arc::clone(&state);
-        tokio::spawn(async move {
-            let _permit = permit;
-            let answer = async {
-                // One read is enough for a GET's request line; the
-                // path picks the endpoint, everything else is ignored.
-                let mut buffer = [0u8; 1024];
-                let read = stream.read(&mut buffer).await.unwrap_or(0);
-                let head = String::from_utf8_lossy(&buffer[..read]);
-                let path = head
-                    .split_whitespace()
-                    .nth(1)
-                    .unwrap_or("/healthz")
-                    .to_string();
-                let (body, content_type) = if path.starts_with("/metrics") {
-                    (
-                        state.render_metrics(),
-                        "text/plain; version=0.0.4; charset=utf-8",
-                    )
-                } else {
-                    (state.render_health(), "application/json")
-                };
-                let response = format!(
-                    "HTTP/1.1 200 OK\r\ncontent-type: {content_type}\r\n\
-                     content-length: {}\r\nconnection: close\r\n\r\n{body}",
-                    body.len()
-                );
-                let _ = stream.write_all(response.as_bytes()).await;
-            };
-            let _ = tokio::time::timeout(timeout, answer).await;
-        });
+/// One `/healthz` subsystem per route (K6 of the kit): the detail is the
+/// loop state the pump reports; the three states that mean "not
+/// delivering because of something outside this process" count as
+/// failing, so the kit answers 503 while they last.
+pub struct RouteSubsystem {
+    name: String,
+    health: Arc<HealthState>,
+}
+
+impl RouteSubsystem {
+    pub fn new(name: &str, health: Arc<HealthState>) -> Self {
+        Self {
+            name: name.to_string(),
+            health,
+        }
+    }
+}
+
+impl Subsystem for RouteSubsystem {
+    fn name(&self) -> &str {
+        &self.name
+    }
+    fn check(&self) -> SubsystemStatus {
+        let state = self.health.state_of(&self.name);
+        match state {
+            "hub-down" | "auth-denied" | "circuit-open" => SubsystemStatus::failing(state),
+            other => SubsystemStatus::ok(other),
+        }
+    }
+}
+
+/// The W6 counters, appended verbatim to the kit's `/metrics`.
+pub struct RouteCounters(pub Arc<HealthState>);
+
+impl ScrapeSource for RouteCounters {
+    fn scrape(&self) -> String {
+        self.0.render_metrics()
     }
 }

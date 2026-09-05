@@ -128,8 +128,8 @@ async fn l4_w4_healthz_reports_route_states_when_opted_in() {
     assert!(response.status().is_success());
     let body = response.text().await.expect("healthz body");
     assert!(
-        body.contains("\"name\":\"healthy\"") && body.contains("\"state\""),
-        "route names and loop states, nothing else (AR10): {body}"
+        body.contains("\"healthy\"") && body.contains("\"detail\""),
+        "route names and loop states as the kit's subsystems (AR10): {body}"
     );
 }
 

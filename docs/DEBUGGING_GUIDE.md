@@ -49,7 +49,7 @@ where to look next. Written in Phase 8 from the code as built.
 | Route stuck in `circuit-open` | The webhook host:port is genuinely unreachable from the LXC. If HA is fine in the browser: wrong host/port in `webhook_url`, or a `.local` name — the static musl binary resolves via DNS only, use the router name or IP. |
 | Policy on the dashboard differs from the config | The runner restarted after someone tweaked the dashboard: the config block replaced every field (W3, by design). Change policy in git. |
 | `/healthz` not answering | The key is commented out (opt-in, fail-closed), the bind address is not the probed interface, or startup failed on a bind error (the journal has the remedy). |
-| Runner exits immediately at startup | Config invalid — the first journal line is a K8 error with its remedy. `--check-config` reproduces it without side effects. |
+| Runner exits immediately at startup | Config invalid — the first journal line is a K8 error with its remedy. `--check` reproduces it without side effects. |
 | One 401 line, then silence | Deliberate (no flood). The route retries with backoff and resumes by itself once the token is fixed. |
 | Backlog grows while HA is up | Check `/healthz`: `delivering` + `delivery kept failing` lines = HA refusing; `idle` = the producer stopped, not the runner. |
 

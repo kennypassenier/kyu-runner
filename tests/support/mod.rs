@@ -646,6 +646,7 @@ pub struct Runner {
     pub child: Child,
     pub log_path: PathBuf,
     _config: tempfile::NamedTempFile,
+    _state: tempfile::TempDir,
 }
 
 impl Runner {
@@ -654,10 +655,27 @@ impl Runner {
     }
 
     pub fn start_with_env(config_text: &str, env: &[(&str, &str)]) -> Runner {
+        // Since the chassis migration the observation socket is the kit's
+        // and always listens: a test that used to opt in with
+        // `healthz_listen = "..."` in the config now gets that address as
+        // `--listen`; every other test listens on an ephemeral port.
+        let mut listen = "127.0.0.1:0".to_string();
+        let mut kept = Vec::new();
+        for line in config_text.lines() {
+            if let Some(rest) = line.trim().strip_prefix("healthz_listen") {
+                if let Some(addr) = rest.split('"').nth(1) {
+                    listen = addr.to_string();
+                }
+                continue;
+            }
+            kept.push(line);
+        }
+        let config_text = kept.join("\n");
         let mut config = tempfile::NamedTempFile::new().expect("config file");
         config
             .write_all(config_text.as_bytes())
             .expect("write config");
+        let state = tempfile::tempdir().expect("state dir");
         let log = tempfile::NamedTempFile::new().expect("log file");
         let (log_file, log_path) = log.keep().expect("keep log");
         // KYU_RUNNER_BIN lets the release workflow run this suite against
@@ -669,19 +687,33 @@ impl Runner {
         command
             .arg("--config")
             .arg(config.path())
+            .arg("--state-dir")
+            .arg(state.path())
+            .arg("--listen")
+            .arg(&listen)
+            // The kit's shutdown bound wraps the pump's own grace (AR9):
+            // wide enough for the slowest delivery any test configures.
+            .args(["--shutdown-timeout-ms", "20000"])
             // Crate-scoped debug: hyper/reqwest connect spam would break
             // the K7 log-volume bound and drown the assertions.
             .env("KYU_RUNNER_LOG", "info,kyu_runner=debug")
             .stdout(Stdio::null())
             .stderr(log_file);
         for (name, value) in env {
-            command.env(name, value);
+            // The hub token has its own name since 0.2.0 (KYU_RUNNER_TOKEN
+            // is the kit's dashboard login token); tests keep the old name.
+            if *name == "KYU_RUNNER_TOKEN" {
+                command.env("KYU_RUNNER_HUB_TOKEN", value);
+            } else {
+                command.env(name, value);
+            }
         }
         let child = command.spawn().expect("spawn runner");
         Runner {
             child,
             log_path,
             _config: config,
+            _state: state,
         }
     }
 

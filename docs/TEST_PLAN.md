@@ -13,7 +13,7 @@ items between "covered" and "accepted".
 | `src/route.rs` unit tests (2) | AR6 backoff shape (doubling, cap, bounded jitter, reset). |
 | `tests/l0_skeleton.rs` (1) | The crate builds and the harness runs — the walking skeleton's only claim. |
 | `tests/l0_harness.rs` (2) | The harness's own port-reservation mechanism — a flaky harness is a broken gate. |
-| `tests/l1_check_config.rs` (6) | W2 at the binary boundary: exit codes, remedies, `--version`, and the no-network guarantee (a held listener proves `--check-config` never connects). |
+| `tests/l1_check_config.rs` (6) | W2 at the binary boundary: exit codes, remedies, `--version`, and the no-network guarantee (a held listener proves `--check` never connects). |
 | `tests/l2_pump.rs` (11) | The pump E2E against a **real hub** (binary or docker image): S1-S4, byte-for-byte incl. a non-UTF-8 payload and all four metadata headers, AR15 circuit (both halves: connect-class opens it, a 500 does not), AR16 birth replay, AR17 redirect refusal, F1 oversize cap → dead letter, token/payload log hygiene at trace level in both log formats, 401 remedy without flooding. |
 | `tests/l3_resilience.rs` (7) | K7 hub stop/start drill with a bounded log-volume window; W1 SIGTERM mid-delivery, SIGINT, and the second-signal exit (code 130); AR9 shutdown bounded by the derived grace even behind a stuck delivery; AR1 panic → supervisor respawn → message survives; K9 a route resumes by itself once the hub accepts its token again. |
 | `tests/l6_metrics.rs` (1) | W6 Prometheus counters move on a delivery and on a nack. |

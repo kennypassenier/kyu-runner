@@ -186,18 +186,25 @@ hub's defaults.
 
 ### W4 · Health endpoint
 
-```toml
-healthz_listen = "10.10.10.9:8081"   # absent = no socket, ever
+Since 0.2.0 the observation socket is the kit's (chassis-rs) and always
+listens — default `127.0.0.1:8082`, set with `KYU_RUNNER_LISTEN` (or
+`--listen`) in the environment file, e.g. `10.10.10.9:8082` for Uptime
+Kuma. `GET /healthz` answers
+
+```json
+{"status":"ok","version":"0.2.0","subsystems":{"kyu-events":{"ok":true,"detail":"idle"}}}
 ```
 
-Answers route names and loop states as JSON — nothing else, never a
-payload, never the token. Opt-in and fail-closed: without the key no
-socket is opened.
+— one subsystem per route, its loop state as the detail, never a payload,
+never the token. While a route is `hub-down`, `auth-denied` or
+`circuit-open` the status is `degraded` and the code 503 (the kit's rule;
+`kyu-runner --healthcheck` still counts that as alive). `GET /metrics`
+keeps `kyu_runner_delivered_total{route}` and `kyu_runner_nacked_total{route}`
+and adds the kit's build-info, uptime and request counters.
 
 **Proven by:** `l4_w4_healthz_reports_route_states_when_opted_in`,
-`l1_w4_healthz_listen_must_be_a_socket_address`,
-`l4_w4_the_config_key_is_what_opens_the_socket` (without the key no
-socket exists at all) and
+`l4_w4_the_config_key_is_what_opens_the_socket` (the address comes from
+the listen knob; nothing listens where you did not point it) and
 `l4_w4_healthz_reports_the_failure_state_not_a_frozen_ok` (the state
 really moves to `hub-down` during an outage, so a monitor cannot watch
 a light that never changes colour).
@@ -251,13 +258,19 @@ it — the endpoint is ready for the day one exists.
 ### The CLI (W2)
 
 ```
-kyu-runner [--config <path>] [--check-config]
-kyu-runner --version | --help
+kyu-runner [--config <path>] [--state-dir <dir>] [--listen <host:port>] [--check]
+kyu-runner --version | --help | --print-config | --healthcheck | update | gen-secret | rekey
 ```
 
-`--check-config` validates and exits — zero network calls, which is
-why it is safe as `ExecStartPre=` on a cold-booting LXC where the hub
-is not up yet.
+The command line is the kit's (chassis-rs): every knob is also an
+environment variable (`KYU_RUNNER_CONFIG`, `KYU_RUNNER_STATE_DIR`,
+`KYU_RUNNER_LISTEN`, `KYU_RUNNER_LOG`, `KYU_RUNNER_LOG_FORMAT`,
+`KYU_RUNNER_SHUTDOWN_TIMEOUT_MS`, the `KYU_RUNNER_UPDATE_*` family) and a
+key in the same config file; precedence flag > env > file > default.
+`--check` validates the pump's config AND the kit's knobs, probes the state
+directory and exits — zero network calls, which is why it is safe as
+`ExecStartPre=` on a cold-booting LXC where the hub is not up yet.
+`--print-config` shows every knob with its source, secrets masked.
 
 **Proven by:** `l1_w2_check_config_exits_zero_on_a_valid_config`,
 `l1_w2_check_config_makes_no_network_calls`,
@@ -267,7 +280,7 @@ is not up yet.
 ### K9 · The token
 
 ```
-KYU_RUNNER_TOKEN       app token, minted on the hub's /apps page
+KYU_RUNNER_HUB_TOKEN   app token, minted on the hub's /apps page (was KYU_RUNNER_TOKEN before 0.2.0)
 KYU_RUNNER_LOG         log filter (default: info)
 KYU_RUNNER_LOG_FORMAT  "json" for one JSON object per line (Loki)
 ```

@@ -16,7 +16,8 @@ Reality checks baked into these procedures (from the Phase 4 critic):
   `[routes.policy]` block in git is the whole policy: any tweak made
   on the hub dashboard is reverted the next time the runner starts.
   Change policies in `deploy/config.toml`, not on the dashboard.
-- **The release binary is static musl**: it resolves names via DNS
+- **The release binary is glibc for Debian trixie since 0.2.0** (built by the
+  chassis release workflow; was static musl): it resolves names via DNS
   only — no mDNS/Avahi. Use router-DNS names or IPs in
   `webhook_url`, never a `.local` name.
 
@@ -30,12 +31,13 @@ Reality checks baked into these procedures (from the Phase 4 critic):
 > `python3 -c 'import urllib.request;print(urllib.request.urlopen("http://127.0.0.1:8080/healthz",timeout=3).read().decode())'`
 
 1. Build or download the artifact:
-   - from a release: download `kyu-runner-x86_64-linux-musl` +
+   - from a release: download `kyu-runner` +
      `SHA256SUMS` from the GitHub release, then `sha256sum -c SHA256SUMS`;
-   - or locally: `scripts/build-release.sh` (same artifact + manifest).
+   - or locally: `scripts/drill-release.sh` of the kit builds a drill
+     release; `scripts/sign-release.sh` signs a CI-built one.
 2. Copy it in place:
-   `scp kyu-runner-x86_64-linux-musl root@<target-lxc>:/usr/local/bin/kyu-runner`
-   and `chmod 755 /usr/local/bin/kyu-runner`.
+   `scp kyu-runner root@<target-lxc>:/opt/kyu-runner/bin/kyu-runner`
+   and `chmod 755 /opt/kyu-runner/bin/kyu-runner`.
 3. **HA side first (K6):** create the webhook automation(s) in HA for
    every route you are about to enable — see §6. Every webhook trigger
    sets `local_only: true`.
@@ -43,12 +45,12 @@ Reality checks baked into these procedures (from the Phase 4 critic):
    `kyu-runner` → copy the token. On the target LXC (the `read -rs` keeps the
    token out of the shell history — standing rule 10):
    ```
-   install -m 600 /dev/null /etc/kyu-runner/token.env
-   read -rs TOKEN && printf 'KYU_RUNNER_TOKEN=%s\n' "$TOKEN" > /etc/kyu-runner/token.env && unset TOKEN
+   install -m 600 /dev/null /etc/kyu-runner/kyu-runner.env
+   read -rs TOKEN && printf 'KYU_RUNNER_HUB_TOKEN=%s\n' "$TOKEN" > /etc/kyu-runner/kyu-runner.env && unset TOKEN
    ```
 5. Config: `mkdir -p /etc/kyu-runner` and copy `deploy/config.toml`
    to `/etc/kyu-runner/config.toml`. Verify:
-   `/usr/local/bin/kyu-runner --config /etc/kyu-runner/config.toml --check-config`
+   `/opt/kyu-runner/bin/kyu-runner --config /etc/kyu-runner/config.toml --check`
 6. Unit: copy `deploy/kyu-runner.service` to
    `/etc/systemd/system/kyu-runner.service`, then
    `systemctl daemon-reload && systemctl enable --now kyu-runner`.
@@ -67,8 +69,8 @@ Reality checks baked into these procedures (from the Phase 4 critic):
 1. Download + verify the new artifact (install step 1).
 2. `systemctl stop kyu-runner` — in-flight deliveries finish within
    the grace; unacked messages redeliver (K5), so nothing is lost.
-3. Replace `/usr/local/bin/kyu-runner`, keep the old binary as
-   `/usr/local/bin/kyu-runner.prev` until the new one is seen running.
+3. Replace `/opt/kyu-runner/bin/kyu-runner`, keep the old binary as
+   `/opt/kyu-runner/bin/kyu-runner.prev` until the new one is seen running.
 4. `systemctl start kyu-runner`; read back per install step 7.
 
 ## 3 · Restore from zero (M3 — drilled in Phase 7)
@@ -110,7 +112,7 @@ The runner's full state is: the binary (releases), the config + unit
 ## 5 · Adding, renaming or removing a route
 
 1. Edit `deploy/config.toml` in the repo (git is the truth), copy to
-   `/etc/kyu-runner/config.toml`, `--check-config`, restart.
+   `/etc/kyu-runner/config.toml`, `--check`, restart.
 2. **Adding:** HA automation first, then the route, then the smoke
    test (§1 steps 3/8). If producers were already publishing to the
    topic before the route existed, the subscription starts *from now*;

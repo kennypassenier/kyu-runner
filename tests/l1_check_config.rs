@@ -1,4 +1,4 @@
-// L1 · W2 (--check-config) + K8 (fail-closed startup) at the binary
+// L1 · W2 (--check, the kit's form of --check-config) + K8 (fail-closed startup) at the binary
 // boundary: real process, real exit codes, remedies on stderr.
 
 use std::io::Write;
@@ -6,11 +6,15 @@ use std::process::Command;
 
 fn run(args: &[&str]) -> std::process::Output {
     // KYU_RUNNER_BIN lets the release workflow run this suite against the
-    // musl artifact (T8/M1).
+    // release artifact (T8/M1). The kit's --check probes the state
+    // directory (rule 12), so every run gets a scratch one.
     let binary =
         std::env::var("KYU_RUNNER_BIN").unwrap_or_else(|_| env!("CARGO_BIN_EXE_kyu-runner").into());
+    let state = tempfile::tempdir().expect("state dir");
     Command::new(binary)
         .args(args)
+        .arg("--state-dir")
+        .arg(state.path())
         .output()
         .expect("binary runs")
 }
@@ -34,7 +38,7 @@ webhook_url = "http://ha.lan:8123/api/webhook/hub_kyu_events"
 #[test]
 fn l1_w2_check_config_exits_zero_on_a_valid_config() {
     let file = config_file(VALID);
-    let out = run(&["--config", file.path().to_str().unwrap(), "--check-config"]);
+    let out = run(&["--config", file.path().to_str().unwrap(), "--check"]);
     assert!(out.status.success(), "stderr: {:?}", out.stderr);
     let stdout = String::from_utf8_lossy(&out.stdout);
     assert!(stdout.contains("config OK: 1 route(s)"), "{stdout}");
@@ -43,7 +47,7 @@ fn l1_w2_check_config_exits_zero_on_a_valid_config() {
 #[test]
 fn l1_w2_check_config_fails_with_a_remedy_on_an_invalid_config() {
     let file = config_file(&VALID.replace("hub_url", "hub_uri"));
-    let out = run(&["--config", file.path().to_str().unwrap(), "--check-config"]);
+    let out = run(&["--config", file.path().to_str().unwrap(), "--check"]);
     assert_eq!(out.status.code(), Some(1));
     let stderr = String::from_utf8_lossy(&out.stderr);
     assert!(stderr.contains("Remedy:"), "{stderr}");
@@ -51,16 +55,22 @@ fn l1_w2_check_config_fails_with_a_remedy_on_an_invalid_config() {
 
 #[test]
 fn l1_k8_a_missing_config_file_fails_with_a_remedy() {
-    let out = run(&["--config", "/nonexistent/kyu-runner.toml", "--check-config"]);
+    let out = run(&["--config", "/nonexistent/kyu-runner.toml", "--check"]);
     assert_eq!(out.status.code(), Some(1));
     let stderr = String::from_utf8_lossy(&out.stderr);
-    assert!(stderr.contains("Remedy:"), "{stderr}");
+    // The kit reads the file and words its remedies "What now:"; the pump's
+    // own config errors keep "Remedy:". Either way the operator gets one.
+    assert!(
+        stderr.contains("What now:") || stderr.contains("Remedy:"),
+        "{stderr}"
+    );
 }
 
 #[test]
 fn l1_w2_an_unknown_argument_fails_with_a_remedy() {
     let out = run(&["--frobnicate"]);
-    assert_eq!(out.status.code(), Some(2));
+    // The kit's convention: every refusal exits 1 with a remedy.
+    assert_eq!(out.status.code(), Some(1));
     let stderr = String::from_utf8_lossy(&out.stderr);
     assert!(stderr.contains("--help"), "{stderr}");
 }
@@ -85,7 +95,7 @@ fn l1_w2_check_config_makes_no_network_calls() {
 
     let config = VALID.replace("http://127.0.0.1:8080", &format!("http://{addr}"));
     let file = config_file(&config);
-    let out = run(&["--config", file.path().to_str().unwrap(), "--check-config"]);
+    let out = run(&["--config", file.path().to_str().unwrap(), "--check"]);
     assert!(out.status.success(), "stderr: {:?}", out.stderr);
 
     match listener.accept() {

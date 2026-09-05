@@ -1,5 +1,50 @@
 # Changelog
 
+## 0.2.0 — 2026-09-05 (unreleased; branch `chassis-migration`)
+
+Built on [chassis-rs](https://github.com/kennypassenier/chassis-rs) v1.1.0:
+the kit now owns the command line, configuration layers, logging,
+`/healthz`, `/metrics`, the graceful shutdown and signed self-update. The
+pump — routes, hub client, webhook client, circuit breaker, policies — is
+unchanged.
+
+### Migration
+
+- **Command line.** `--check-config` is `--check`; `--config <path>` stays
+  (or `KYU_RUNNER_CONFIG`); every knob also has an environment variable
+  (`KYU_RUNNER_LISTEN`, `KYU_RUNNER_STATE_DIR`, `KYU_RUNNER_LOG`,
+  `KYU_RUNNER_LOG_FORMAT`, `KYU_RUNNER_SHUTDOWN_TIMEOUT_MS`, …); an unknown
+  argument exits 1 (was 2).
+- **The hub token is `KYU_RUNNER_HUB_TOKEN`** (was `KYU_RUNNER_TOKEN`, which
+  the kit reserves for its dashboard login token). Rename the line in the
+  environment file.
+- **The observation socket always listens** (default `127.0.0.1:8082`; set
+  `KYU_RUNNER_LISTEN`). `healthz_listen`, `healthz_max_connections` and
+  `healthz_timeout_ms` are gone from the config file and refused as unknown
+  keys. `/healthz` answers `{"status","version","subsystems":{<route>:
+  {"ok","detail":<state>}}}` and 503 while a route is `hub-down`,
+  `auth-denied` or `circuit-open`; `/metrics` keeps
+  `kyu_runner_delivered_total{route}` and `kyu_runner_nacked_total{route}`
+  and gains the kit's `kyu_runner_build_info`/`_uptime_seconds`/
+  `_http_requests_total`.
+- **A state directory is required** (default `/var/lib/kyu-runner`, knob
+  `KYU_RUNNER_STATE_DIR`): `--check` refuses a missing or unwritable one;
+  it holds the self-update state only.
+- **Shutdown.** The bound is explicit (`KYU_RUNNER_SHUTDOWN_TIMEOUT_MS`,
+  default 10 s; set it above the largest `webhook_timeout_ms` + settle) and
+  a second signal is ignored by design (systemd's `TimeoutStopSec` is the
+  backstop) — it no longer exits 130.
+- **Install path** `/opt/kyu-runner/bin/kyu-runner` with the unit in
+  `deploy/kyu-runner.service` (Type=notify, fixed user `kyu-runner`,
+  hardening set); environment file `/etc/kyu-runner/kyu-runner.env`; the
+  homelab stack file is `deploy/service.yml`.
+- **Self-update is on** (A7): releases are glibc/trixie binaries named
+  `kyu-runner` with `SHA256SUMS`, `SHA256SUMS.minisig` (trusted comment
+  `kennypassenier/kyu-runner v<version>`) and `VERSION`, produced by
+  `.github/workflows/release.yml` + `scripts/sign-release.sh`; the musl
+  build and `scripts/build-release.sh` are retired.
+
+
 ## 0.1.0 — 2026-08-30
 
 First release. Deliberately 0.x: everything below is built, tested and

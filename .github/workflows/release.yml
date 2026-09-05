@@ -1,37 +1,65 @@
 name: Release
 
+# On a `v*` tag: build the glibc binary in the same Debian the services run
+# on (T8), write SHA256SUMS, push the container image to GHCR, and create
+# the GitHub release with the binary and the manifest. Everything here
+# runs with the workflow's own GITHUB_TOKEN — no personal token anywhere.
+#
+# The signature (`SHA256SUMS.minisig`) and `VERSION` are NOT made here: the
+# signing key stays on Kenny's machine, and `chassis release <version>`
+# uploads both once this run is green (J2). The self-updater refuses a
+# release until all four assets exist, so an unsigned release is inert.
 on:
   push:
     tags: ["v*"]
 
-# Security F3: actions pinned to commit SHAs; contents:write is needed
-# to upload the release assets.
 permissions:
   contents: write
+  packages: write
+
+env:
+  CARGO_TERM_COLOR: always
 
 jobs:
   release:
+    name: build · checksum · image · release
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # master 2026-08
-        with:
-          toolchain: "1.97"
-          targets: x86_64-unknown-linux-musl
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
-      - name: Build the artifact
-        run: cargo build --release --target x86_64-unknown-linux-musl
-      - name: E2E the released artifact (the shipped binary is the tested binary)
-        env:
-          KYU_IMAGE: ghcr.io/kennypassenier/kyu@sha256:13963aff9cb9b8449b19a51b209ef22661f7c174b1d9ddc8a88ef38240747177 # 2.0.0
-          KYU_RUNNER_BIN: target/x86_64-unknown-linux-musl/release/kyu-runner
-        run: cargo test --test l1_check_config --test l2_pump --test l4_extras
-      - name: Package with checksum manifest
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Version from the tag must match Cargo.toml
         run: |
-          cp target/x86_64-unknown-linux-musl/release/kyu-runner kyu-runner-x86_64-linux-musl
-          sha256sum kyu-runner-x86_64-linux-musl > SHA256SUMS
-      - uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
+          tag="${GITHUB_REF_NAME#v}"
+          cargo_version=$(grep -m1 '^version' Cargo.toml | sed -E 's/version = "(.*)"/\1/')
+          if [ "$tag" != "$cargo_version" ]; then
+            echo "tag v$tag but Cargo.toml says $cargo_version. What now: bump Cargo.toml (chassis release does this) and re-tag."; exit 1
+          fi
+      - name: Build the release binary for Debian trixie (glibc)
+        run: |
+          docker run --rm -v "$PWD":/w -w /w -e CARGO_TARGET_DIR=/w/target-trixie -e CARGO_HOME=/w/target-trixie/cargo-home rust:1.97-slim-trixie \
+            sh -c 'apt-get update -qq >/dev/null && apt-get install -y -qq pkg-config libssl-dev >/dev/null && cargo build --release --locked'
+          mkdir -p dist
+          cp target-trixie/release/kyu-runner dist/kyu-runner
+          (cd dist && sha256sum kyu-runner > SHA256SUMS && cat SHA256SUMS)
+      - name: Log in to GHCR
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and push the image
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ghcr.io/kennypassenier/kyu-runner:${{ github.ref_name }}
+            ghcr.io/kennypassenier/kyu-runner:latest
+      - name: Create the GitHub release with binary + SHA256SUMS
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           files: |
-            kyu-runner-x86_64-linux-musl
-            SHA256SUMS
+            dist/kyu-runner
+            dist/SHA256SUMS
+          body: |
+            Built from `${{ github.sha }}`. The signature (`SHA256SUMS.minisig`) and `VERSION`
+            are added by `chassis release`; until they are, the self-updater ignores this release.

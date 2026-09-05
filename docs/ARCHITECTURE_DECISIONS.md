@@ -46,6 +46,9 @@ Phases 3-4 output. T = tech choice, AR = architecture.
   dependency justified in the commit that adds it; **cargo-deny** in CI
   (advisories, licenses, duplicates) — kyu's regime.
 - **T8 · Platform & targets.** Dev + CI: `x86_64-unknown-linux-gnu`.
+  *Amendment 2026-09-05 (chassis migration, 0.2.0): the release artifact is a
+  glibc binary for Debian trixie built by the kit's release workflow (T8 of
+  chassis-rs); the musl choice below is history.*
   Release artifact: **`x86_64-unknown-linux-musl`, statically linked** —
   LXC 109's libc is not this Arch machine's libc, and a static binary
   removes the whole class (the runner needs no C dependencies; there is
@@ -123,9 +126,9 @@ Phases 3-4 output. T = tech choice, AR = architecture.
   been born yet; kyu creates topics on first publish) is a
   **quiet wait state**: one transition line, a 5 s re-poll, no error
   spam.
-- **AR7 · Token.** `KYU_RUNNER_TOKEN` from the environment, injected
+- **AR7 · Token.** `KYU_RUNNER_HUB_TOKEN` from the environment, injected
   via a root-owned 0600 systemd `EnvironmentFile`
-  (`/etc/kyu-runner/token.env`). Sent as `authorization: Bearer` on
+  (`/etc/kyu-runner/kyu-runner.env`). Sent as `authorization: Bearer` on
   every hub request. Never logged, never in argv, never in the config
   file (which lives in git — standing rule 10); a redaction test
   asserts it. A hub without a door (dev/scratch) works with the

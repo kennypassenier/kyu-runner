@@ -1,6 +1,6 @@
 [package]
 name = "kyu-runner"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 rust-version = "1.97"
 license = "MIT OR Apache-2.0"
@@ -12,14 +12,17 @@ publish = false
 # justified here, and cargo-deny checks advisories, licenses and
 # duplicates in CI.
 [dependencies]
-anyhow = "1"                                                    # error context at the binary edge (T6)
+# The shared foundation (chassis-rs): configuration, logging, health,
+# metrics, shutdown, self-update. Pinned to a tag, like every consumer.
+chassis = { git = "https://github.com/kennypassenier/chassis-rs", tag = "v1.1.0", default-features = false, features = ["core", "self-update"] }
+axum = { version = "0.8", default-features = false, features = ["http1", "tokio"] }  # the Router type the kit takes
+anyhow = "1"                                                    # error context inside the hub/webhook clients (T6)
 reqwest = { version = "0.12", default-features = false }        # HTTP client, no TLS: LAN plain HTTP only (T3, AR11)
 serde = { version = "1", features = ["derive"] }                # config deserialization (T4)
 thiserror = "2"                                                 # typed config errors with remedies (T6, K8)
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "time", "net", "io-util"] }  # runtime (T2); io-util for the W4 health socket
-toml = "0.9"                                                    # config format (T4)
-tracing = "0.1"                                                 # structured events (T5)
-tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }  # T5; json for Loki
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "time", "net", "sync"] }  # runtime (T2)
+toml = "0.9"                                                    # config format (T4); the kit hands the file table over
+tracing = "0.1"                                                 # structured events (T5); the subscriber is the kit's
 
 [dev-dependencies]
 reqwest = { version = "0.12", default-features = false }        # test-side HTTP against the real hub (SR9)

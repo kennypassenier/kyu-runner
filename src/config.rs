@@ -4,8 +4,6 @@
 //! the file read in `load`.
 
 use std::collections::HashSet;
-use std::net::SocketAddr;
-use std::path::Path;
 use std::time::Duration;
 
 use serde::Deserialize;
@@ -37,25 +35,8 @@ pub const DELIVERY_RETRY_CAP: Duration = Duration::from_secs(8);
 /// `settle_timeout_ms`, which IS configurable.
 pub const SETTLE_RETRY_PAUSE: Duration = Duration::from_secs(1);
 
-/// Pinned: not a tuning knob but a busy-loop guard. `accept()` on an
-/// exhausted fd table returns instantly, so without this pause the
-/// health socket would spin a core while the process is already in
-/// trouble (security finding F2).
-pub const HEALTH_ACCEPT_PAUSE: Duration = Duration::from_millis(100);
-
 #[derive(Debug, Error)]
 pub enum ConfigError {
-    #[error(
-        "cannot read config file {path}: {source}. Remedy: check that the file exists and is \
-         readable; the default location is /etc/kyu-runner/config.toml and --config <path> \
-         selects another."
-    )]
-    Unreadable {
-        path: String,
-        #[source]
-        source: std::io::Error,
-    },
-
     #[error(
         "config is not valid: {0}. Remedy: fix the TOML — unknown keys are refused on purpose, \
          so a typo fails loudly; compare with deploy/config.toml in the repo."
@@ -75,12 +56,6 @@ pub enum ConfigError {
          goes in the moment a concrete https target exists."
     )]
     UrlScheme { field: String, url: String },
-
-    #[error(
-        "healthz_listen {value:?} is not a listen address. Remedy: use host:port, e.g. \
-         \"0.0.0.0:8081\" — or remove the key to keep the health endpoint off."
-    )]
-    HealthzListen { value: String },
 
     #[error(
         "[defaults] poll_wait_ms is {value} ms, outside 1000-300000. Remedy: pick a value \
@@ -176,9 +151,6 @@ fn validate_url(field: &str, url: &str) -> Result<(), ConfigError> {
 #[serde(deny_unknown_fields)]
 pub struct Config {
     pub hub_url: String,
-    /// W4: absent means no health socket is ever opened (fail-closed).
-    #[serde(default)]
-    pub healthz_listen: Option<String>,
     #[serde(default)]
     pub defaults: Defaults,
     #[serde(default)]
@@ -214,9 +186,6 @@ pub struct Tuning {
     /// inside the lease budget for settling (AR5), so raising it
     /// tightens the budget instead of silently breaking the invariant.
     pub settle_timeout_ms: u64,
-    /// Health socket limits (W4/AR10, security finding F2).
-    pub healthz_max_connections: usize,
-    pub healthz_timeout_ms: u64,
 }
 
 impl Default for Tuning {
@@ -230,8 +199,6 @@ impl Default for Tuning {
             topic_unborn_poll_ms: 5_000,
             route_respawn_ms: 5_000,
             settle_timeout_ms: 5_000,
-            healthz_max_connections: 16,
-            healthz_timeout_ms: 5_000,
         }
     }
 }
@@ -261,10 +228,6 @@ impl Tuning {
         Duration::from_millis(self.settle_timeout_ms)
     }
 
-    pub fn healthz_timeout(&self) -> Duration {
-        Duration::from_millis(self.healthz_timeout_ms)
-    }
-
     fn validate(&self) -> Result<(), ConfigError> {
         let pair = |name: &str, base: u64, max: u64| -> Result<(), ConfigError> {
             if !(50..=600_000).contains(&base) || !(50..=600_000).contains(&max) || max < base {
@@ -289,7 +252,6 @@ impl Tuning {
             ("topic_unborn_poll_ms", self.topic_unborn_poll_ms),
             ("route_respawn_ms", self.route_respawn_ms),
             ("settle_timeout_ms", self.settle_timeout_ms),
-            ("healthz_timeout_ms", self.healthz_timeout_ms),
         ] {
             if !(100..=600_000).contains(&value) {
                 return Err(ConfigError::Tuning {
@@ -297,12 +259,6 @@ impl Tuning {
                     problem: format!("{value} ms is outside 100-600000"),
                 });
             }
-        }
-        if !(1..=1_000).contains(&self.healthz_max_connections) {
-            return Err(ConfigError::Tuning {
-                field: "healthz_max_connections".into(),
-                problem: format!("{} is outside 1-1000", self.healthz_max_connections),
-            });
         }
         Ok(())
     }
@@ -348,6 +304,10 @@ pub struct Route {
 }
 
 impl Config {
+    pub fn from_table(table: &toml::Table, kit_keys: &[&str]) -> Result<Config, ConfigError> {
+        from_table(table, kit_keys)
+    }
+
     pub fn webhook_timeout(&self, route: &Route) -> Duration {
         Duration::from_millis(
             route
@@ -419,13 +379,6 @@ impl Config {
             self.hub_url.pop();
         }
         validate_url("hub_url", &self.hub_url)?;
-        if let Some(listen) = &self.healthz_listen
-            && listen.parse::<SocketAddr>().is_err()
-        {
-            return Err(ConfigError::HealthzListen {
-                value: listen.clone(),
-            });
-        }
         if !(1_000..=MAX_POLL_WAIT_MS).contains(&self.defaults.poll_wait_ms) {
             return Err(ConfigError::PollWait {
                 value: self.defaults.poll_wait_ms,
@@ -592,12 +545,19 @@ impl Route {
     }
 }
 
-pub fn load(path: &Path) -> Result<Config, ConfigError> {
-    let text = std::fs::read_to_string(path).map_err(|source| ConfigError::Unreadable {
-        path: path.display().to_string(),
-        source,
-    })?;
-    parse(&text)
+/// Build the pump's config from the TOML table the kit already read: the
+/// kit's own knob keys (and its `[[notify.webhook]]` tables) are stripped
+/// first, so `deny_unknown_fields` keeps refusing typos in OUR keys while
+/// the two configurations share one file.
+pub fn from_table(table: &toml::Table, kit_keys: &[&str]) -> Result<Config, ConfigError> {
+    let mut own = table.clone();
+    for key in kit_keys {
+        own.remove(*key);
+    }
+    own.remove("notify");
+    let mut config: Config = toml::Value::Table(own).try_into().map_err(Box::new)?;
+    config.validate()?;
+    Ok(config)
 }
 
 pub fn parse(text: &str) -> Result<Config, ConfigError> {
@@ -638,7 +598,6 @@ mod tests {
             config.webhook_timeout(&config.routes[0]),
             Duration::from_millis(10_000)
         );
-        assert!(config.healthz_listen.is_none());
     }
 
     #[test]
@@ -725,16 +684,6 @@ mod tests {
     fn l1_k8_a_tiny_webhook_timeout_is_refused() {
         let text = format!("{VALID}\n[defaults]\nwebhook_timeout_ms = 50\n");
         remedy_of(parse(&text).expect_err("tiny timeout"));
-    }
-
-    #[test]
-    fn l1_w4_healthz_listen_must_be_a_socket_address() {
-        let text = VALID.replace(
-            "hub_url =",
-            "healthz_listen = \"not-an-address\"\nhub_url =",
-        );
-        let message = remedy_of(parse(&text).expect_err("bad listen addr"));
-        assert!(message.contains("host:port"), "{message}");
     }
 
     #[test]
@@ -900,8 +849,6 @@ mod tests {
         assert_eq!(config.tuning.topic_unborn_poll(), Duration::from_secs(5));
         assert_eq!(config.tuning.route_respawn(), Duration::from_secs(5));
         assert_eq!(config.tuning.settle_timeout(), Duration::from_secs(5));
-        assert_eq!(config.tuning.healthz_max_connections, 16);
-        assert_eq!(config.tuning.healthz_timeout(), Duration::from_secs(5));
     }
 
     #[test]
@@ -917,19 +864,6 @@ mod tests {
         let text = format!("{VALID}\n[tuning]\nhub_backoff_ms = 30000\nhub_backoff_max_ms = 500\n");
         let message = remedy_of(parse(&text).expect_err("max below base"));
         assert!(message.contains("hub_backoff"), "{message}");
-    }
-
-    #[test]
-    fn l7_mr1_out_of_range_tuning_values_are_refused() {
-        for line in [
-            "settle_timeout_ms = 10",
-            "topic_unborn_poll_ms = 900000",
-            "healthz_max_connections = 0",
-            "circuit_probe_timeout_ms = 50",
-        ] {
-            let text = format!("{VALID}\n[tuning]\n{line}\n");
-            remedy_of(parse(&text).expect_err(line));
-        }
     }
 
     #[test]

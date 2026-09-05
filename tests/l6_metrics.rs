@@ -62,7 +62,7 @@ async fn l6_w6_counters_move_on_delivery_and_on_nack() {
         .text()
         .await
         .expect("healthz body");
-    assert!(health.contains("\"name\":\"counted\""), "{health}");
+    assert!(health.contains("\"counted\""), "{health}");
 
     // One delivery → delivered_total 1.
     publish(&hub, topic, "text/plain", "count-me").await;

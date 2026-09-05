@@ -3,12 +3,11 @@
 # is just a copy — check drift with:
 #   diff deploy/config.toml /etc/kyu-runner/config.toml
 #
-# The app token is NOT here: it lives in /etc/kyu-runner/token.env
-# (KYU_RUNNER_TOKEN=…), root-owned 0600, loaded by the systemd unit.
+# The app token is NOT here: it lives in /etc/kyu-runner/kyu-runner.env
+# (KYU_RUNNER_HUB_TOKEN=…), root-owned 0600, loaded by the systemd unit.
 # This file is committed; a token in it would be a token in git.
 
-# The hub runs on the same LXC, so localhost — never a name that needs
-# mDNS: the release binary is static musl and cannot resolve .local.
+# The hub runs on the same LXC, so localhost.
 hub_url = "http://127.0.0.1:8080"
 
 # MR1 (2026-08-30): the operational timings. Every value below is the
@@ -26,13 +25,10 @@ hub_url = "http://127.0.0.1:8080"
 # topic_unborn_poll_ms = 5000       # re-poll interval for a topic that does not exist yet
 # route_respawn_ms = 5000           # pause before a crashed route loop restarts
 # settle_timeout_ms = 5000          # ack/nack timeout; also the lease-budget margin
-# healthz_max_connections = 16      # concurrent connections on the observation socket
-# healthz_timeout_ms = 5000         # per-connection timeout there
 
-# W4: uncomment to give Uptime Kuma a direct probe on the runner.
-# Bind the address Kuma probes (the LXC's LAN address), not 0.0.0.0 —
-# and leave it off entirely when nothing monitors it.
-# healthz_listen = "10.10.10.9:8081"
+# W4: the observation socket (/healthz, /metrics) is the kit's and always
+# listens; bind the address Uptime Kuma probes with KYU_RUNNER_LISTEN in the
+# environment file (e.g. KYU_RUNNER_LISTEN=10.10.10.9:8082), not here.
 
 # ── K6/P8 · the hub watches itself, the house sees it ──────────────────
 # The hub's own events (message.dead_lettered, subscription.archived,
