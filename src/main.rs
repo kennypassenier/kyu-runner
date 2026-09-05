@@ -10,7 +10,7 @@
 use std::sync::Arc;
 
 use axum::Router;
-use chassis::{App, AppSpec};
+use chassis::{App, AppSpec, Control};
 use kyu_runner::config;
 use kyu_runner::health::{HealthState, RouteCounters, RouteSubsystem};
 use kyu_runner::hub::HubClient;
@@ -42,10 +42,15 @@ async fn main() -> std::process::ExitCode {
             return std::process::ExitCode::FAILURE;
         }
     };
-    // `--version` and `gen-secret` never read configuration (AR20).
+    // Only a real start and `--check` need the pump's own config (AR20);
+    // `--version`, `gen-secret`, `--healthcheck`, `--print-config`, `update`
+    // and `rekey` are the kit's alone and must work without the file.
     let Some(loaded) = app.loaded.as_ref() else {
         return app.run().await;
     };
+    if !matches!(app.control, None | Some(Control::Check)) {
+        return app.run().await;
+    }
     // The pump's own config lives in the same TOML file as the kit's knobs;
     // the kit hands the whole table over and the pump validates its part
     // with `deny_unknown_fields` intact (kit keys stripped first).
