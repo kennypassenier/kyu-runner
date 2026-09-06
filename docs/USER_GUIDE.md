@@ -280,7 +280,7 @@ directory and exits — zero network calls, which is why it is safe as
 ### K9 · The token
 
 ```
-KYU_RUNNER_HUB_TOKEN   app token, minted on the hub's /apps page (was KYU_RUNNER_TOKEN before 0.2.0)
+KYU_RUNNER_HUB_TOKEN   app token, minted on the hub's Apps page (/clients; was KYU_RUNNER_TOKEN before 0.2.0)
 KYU_RUNNER_LOG         log filter (default: info)
 KYU_RUNNER_LOG_FORMAT  "json" for one JSON object per line (Loki)
 ```

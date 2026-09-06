@@ -41,8 +41,8 @@ Reality checks baked into these procedures (from the Phase 4 critic):
 3. **HA side first (K6):** create the webhook automation(s) in HA for
    every route you are about to enable — see §6. Every webhook trigger
    sets `local_only: true`.
-4. Mint the app token: hub dashboard → `/apps` → register
-   `kyu-runner` → copy the token. On the target LXC (the `read -rs` keeps the
+4. Mint the app token: hub dashboard → **Apps** (`/clients`; the old `/apps`
+   address redirects there since kyu 3.0.0) → issue `kyu-runner` → copy the token. On the target LXC (the `read -rs` keeps the
    token out of the shell history — standing rule 10):
    ```
    install -m 600 /dev/null /etc/kyu-runner/kyu-runner.env
@@ -82,7 +82,7 @@ The runner's full state is: the binary (releases), the config + unit
 2. Copy `deploy/config.toml` and `deploy/kyu-runner.service` from this
    repo (they ARE the backup — check drift first if the old machine
    still answers: `diff deploy/config.toml /etc/kyu-runner/config.toml`).
-3. Re-mint the token on the hub's `/apps` page (revoke the old
+3. Re-mint the token on the hub's Apps page (`/clients`; revoke the old
    `kyu-runner` app if it is still listed), write `token.env`
    (install step 4).
 4. Enable + start + read back (install steps 6-7); smoke test one
