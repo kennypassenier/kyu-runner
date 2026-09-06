@@ -157,7 +157,10 @@ impl Hub {
             }
             None => {
                 let image = std::env::var("KYU_IMAGE")
-                    .unwrap_or_else(|_| "ghcr.io/kennypassenier/kyu:1.0.0".into());
+                    // Pinned to the published 2.0.0 image (the hub the suite was written
+                    // against); the kit CI has no KYU_BIN, so docker pulls this. 1.0.0 was
+                    // never on GHCR — CI failed on it the first time the kit ran the suite.
+                    .unwrap_or_else(|_| "ghcr.io/kennypassenier/kyu@sha256:13963aff9cb9b8449b19a51b209ef22661f7c174b1d9ddc8a88ef38240747177".into());
                 let mut args: Vec<String> = vec![
                     "run".into(),
                     "-d".into(),
