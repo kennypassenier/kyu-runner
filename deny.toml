@@ -19,6 +19,9 @@ allow = [
     "Zlib",
     "CC0-1.0",
     "MPL-2.0",
+    # Brought in by chassis-rs (rustls/ring, webpki-roots) since 0.2.0.
+    "OpenSSL",
+    "CDLA-Permissive-2.0",
 ]
 confidence-threshold = 0.9
 
@@ -29,3 +32,5 @@ wildcards = "deny"
 [sources]
 unknown-registry = "deny"
 unknown-git = "deny"
+# The kit is consumed from its git tag (no crates.io publication, by decision).
+allow-git = ["https://github.com/kennypassenier/chassis-rs"]
