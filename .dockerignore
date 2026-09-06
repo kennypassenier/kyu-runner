@@ -1,0 +1,7 @@
+# Keep local secrets and build output out of the image context (S8).
+.env
+.env.*
+target/
+target-trixie/
+.git/
+.chassis.toml
