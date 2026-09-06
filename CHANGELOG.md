@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-09-06
+
 Built on [chassis-rs](https://github.com/kennypassenier/chassis-rs) v1.1.0:
 the kit now owns the command line, configuration layers, logging,
 `/healthz`, `/metrics`, the graceful shutdown and signed self-update. The
