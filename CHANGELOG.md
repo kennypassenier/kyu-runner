@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.2.0 — 2026-09-05 (unreleased; branch `chassis-migration`)
+## [Unreleased]
 
 Built on [chassis-rs](https://github.com/kennypassenier/chassis-rs) v1.1.0:
 the kit now owns the command line, configuration layers, logging,
