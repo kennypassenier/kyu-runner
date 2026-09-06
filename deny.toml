@@ -1,13 +1,18 @@
-# Dependency policy for T7 ("reluctant, policed"). Checked in CI on
-# every push (advisories move without our code moving).
+# Dependency policy: pragmatic, policed. Checked in CI on every push and
+# weekly (advisories move without our code moving).
 
 [advisories]
 yanked = "deny"
+# Reviewed exceptions come from .chassis.toml (`deny_ignore`), each with its
+# reason next to it there; this file is the kit's and `chassis sync`
+# rewrites it.
+ignore = []
 
 [licenses]
-# kyu-runner itself is MIT OR Apache-2.0 (T9); dependencies must be
-# permissive. A copyleft dependency is a decision, not an accident:
-# adding one requires editing this list in a reviewed commit.
+# This service is MIT OR Apache-2.0; dependencies must be permissive.
+# MPL-2.0 is for webauthn-rs, OpenSSL for its crypto, CDLA-Permissive-2.0
+# for the webpki root store. Adding a copyleft dependency is a decision:
+# edit this list in a reviewed commit.
 allow = [
     "MIT",
     "Apache-2.0",
@@ -19,7 +24,6 @@ allow = [
     "Zlib",
     "CC0-1.0",
     "MPL-2.0",
-    # Brought in by chassis-rs (rustls/ring, webpki-roots) since 0.2.0.
     "OpenSSL",
     "CDLA-Permissive-2.0",
 ]
@@ -31,6 +35,5 @@ wildcards = "deny"
 
 [sources]
 unknown-registry = "deny"
-unknown-git = "deny"
-# The kit is consumed from its git tag (no crates.io publication, by decision).
+# The kit is a git dependency (SCOPE N3).
 allow-git = ["https://github.com/kennypassenier/chassis-rs"]

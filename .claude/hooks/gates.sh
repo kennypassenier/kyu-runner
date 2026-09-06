@@ -1,31 +1,40 @@
 #!/usr/bin/env bash
-# kyu-runner quality gates (standing rules 6/7): format, lint with
-# warnings as errors, full test suite. Called by .githooks/pre-commit
-# and .claude/hooks/check-commit.sh; non-zero exit blocks the commit.
+# Project quality gates: format, clippy with warnings as errors, the full
+# test suite, and the clean-tree check. Called by .githooks/pre-commit for
+# every commit and by .claude/hooks/check-commit.sh before Claude's
+# commits; non-zero exit blocks the commit. cargo-deny runs in CI only.
 set -euo pipefail
-cd "${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel)}"
 
-# Standing rule 7 (kyu retro 2026-08-28): a gate that lets the tree
-# change while it runs is green locally and wrong in the commit — cargo
-# rewrites Cargo.lock, and anything rewritten after `git add` is absent
-# from what gets committed. Snapshot before, compare after.
-snapshot() { { git status --porcelain=v1; git diff; git diff --cached; } | sha256sum; }
-before=$(snapshot)
+cd "$(git rev-parse --show-toplevel)"
 
-if [ -f Cargo.toml ]; then
-  cargo fmt --all -- --check
-  cargo clippy --all-targets -- -D warnings
-  cargo test --all
-else
-  # Loud, not silent (standing rule 12): before L0 there is no crate yet.
-  echo "gates: no Cargo.toml yet (pre-L0) — Rust gates SKIPPED." >&2
+# Standing rule 7: a gate that does not predict the build is not a gate.
+# The checks rewrite files (cargo refreshes Cargo.lock); anything rewritten
+# AFTER `git add` is green here and absent from the commit, so the tree is
+# fingerprinted before and after and a moved tree is refused.
+gate_tree_fingerprint() {
+  { git status --porcelain; git diff; } | sha256sum | cut -d' ' -f1
+}
+gate_tree_before=$(gate_tree_fingerprint)
+
+cargo fmt --all -- --check
+cargo clippy --all-targets -- -D warnings
+cargo test
+
+# Project-owned gates (chassis 1.6.0, M1): a project keeps its own checks
+# in .claude/hooks/gates.project.sh — a module-boundary grep, a version
+# consistency script, a SQL guard. This file is the kit's and `chassis
+# sync` rewrites it; that one is never touched.
+if [ -x .claude/hooks/gates.project.sh ]; then
+  .claude/hooks/gates.project.sh
 fi
 
-after=$(snapshot)
-if [ "$before" != "$after" ]; then
+if [ "$(gate_tree_fingerprint)" != "$gate_tree_before" ]; then
   {
-    echo "GATE FAILED — the working tree changed while the gates ran (standing rule 7)."
-    echo "Something (cargo?) rewrote a file after staging. Run: git add -A, then commit again."
+    echo "gates: the checks rewrote the working tree while they ran."
+    echo "What this commit carries is NOT what was just tested (usually"
+    echo "Cargo.lock). Changed paths:"
+    git status --porcelain
+    echo "What now: stage the changed files and commit again."
   } >&2
   exit 1
 fi

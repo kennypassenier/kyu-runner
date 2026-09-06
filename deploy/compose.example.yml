@@ -1,0 +1,20 @@
+# Running the image with docker compose (T7: self-update is off inside an
+# image by detection; updates are a new image). The logging block is the
+# rotation for the container's stdout (H4); without it the json-file driver
+# grows without bound.
+services:
+  kyu-runner:
+    image: ghcr.io/kennypassenier/kyu-runner:latest
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    env_file: /etc/kyu-runner/kyu-runner.env   # KYU_RUNNER_TOKEN, KYU_RUNNER_SECRET_KEY, KYU_RUNNER_PUBLIC_URL
+    volumes:
+      - kyu-runner-state:/var/lib/kyu-runner    # a named volume inherits the image's owner
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
+volumes:
+  kyu-runner-state:

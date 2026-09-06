@@ -1,7 +1,4 @@
 # The homelab's stack file for a native service (AR18; `homelab adopt`).
-# kyu-runner is the SECOND native service of the `kyu` stack on CT 109
-# (hostname 109-app-kyu): the authoritative copy lives in the homelab repo at
-# stacks/kyu/kyu-runner/service.yml; this file is what the kit renders for it.
 # vmid and hostname are filled in at adoption: the hostname MUST be
 # <vmid>-app-<stack>, the homelab validates it. update_cmd reproduces the
 # unit line for line — same user, working directory and EnvironmentFile —
@@ -9,16 +6,16 @@
 # without a restart and a failure carries its stderr.
 stack_name: kyu-runner
 vmid: 109
-hostname: 109-app-kyu
+hostname: 109-app-kyu-runner
 unit: kyu-runner
 binary: /opt/kyu-runner/bin/kyu-runner
-env_file: /etc/kyu-runner/kyu-runner.env
+env_file: /appdata/kyu/kyu-runner-config/token.env
 data_dirs:
-  - /var/lib/kyu-runner
+  - /appdata/kyu/kyu-runner-config
 update_cmd: >-
   systemd-run --wait --pipe --collect --uid=kyu-runner --gid=kyu-runner
-  --property=EnvironmentFile=/etc/kyu-runner/kyu-runner.env
-  --property=WorkingDirectory=/var/lib/kyu-runner
+  --property=EnvironmentFile=/appdata/kyu/kyu-runner-config/token.env
+  --property=WorkingDirectory=/appdata/kyu/kyu-runner-config
   /opt/kyu-runner/bin/kyu-runner update
 release_repo: kennypassenier/kyu-runner
 release_asset: kyu-runner

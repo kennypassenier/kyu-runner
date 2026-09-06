@@ -4,8 +4,15 @@ name = "kyu-runner"
 description = "Pulls topics from the kyu hub and pushes each message to Home Assistant"
 repo = "kennypassenier/kyu-runner"
 toolchain = "1.97"
-chassis_tag = "v1.1.0"
+chassis_tag = "v1.7.1"
 chassis_repo = "https://github.com/kennypassenier/chassis-rs"
 kp_themes = "3.1.0"
-state_dir = "/var/lib/kyu-runner"
+# Measured on CT 109 (2026-09-06, CF-6 d): the pump's config and token env
+# live in the homelab's config dir; the kit's state (update marker) goes
+# there too. Binary: /usr/local/bin today (0.1.0), /opt/kyu-runner/bin with
+# the 0.2.x deploy (V6, homelab).
+state_dir = "/appdata/kyu/kyu-runner-config"
+env_file = "/appdata/kyu/kyu-runner-config/token.env"
 latch = false
+# Adopted by the homelab as stack kyu-runner on CT 109 (2026-08-31).
+vmid = 109

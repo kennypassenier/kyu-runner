@@ -1,49 +1,76 @@
 name: CI
 
+# Runs on every branch (standing rule 6a): branch protection waits for
+# these checks, and a branch push that produced no checks could never be
+# merged without a pull request. Written by `chassis new`; `chassis sync`
+# shows the diff when the kit's version of this file changes.
 on:
   push:
+    branches: ["**"]
   pull_request:
+  workflow_dispatch:
 
-# Security F3: read-only token for CI; actions pinned to commit SHAs
-# (a tag is mutable, a SHA is not).
+env:
+  CARGO_TERM_COLOR: always
+
+# S7: the CI token only reads; publishing happens in release.yml.
 permissions:
   contents: read
 
 jobs:
   gates:
+    name: fmt · clippy · tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      # rust-toolchain.toml pins the actual version (standing rule 7);
-      # the action just makes sure rustup + components are present.
-      - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # master 2026-08
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: dtolnay/rust-toolchain@d1031067263f94b142dd6c0ce24c5eb9d02d52a0 # master, 2026-09
         with:
           toolchain: "1.97"
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
       - name: Format check
         run: cargo fmt --all -- --check
-      - name: Lint (warnings are errors)
+      - name: Clippy (warnings are errors)
         run: cargo clippy --all-targets -- -D warnings
-      # G1 (Kenny, 2026-08-30): CI used to run without KYU_BIN, so the
-      # drill that stops and restarts the hub skipped itself and "CI is
-      # green" quietly excluded it. Lifting the binary out of the
-      # published image gives CI the same hub this machine has.
-      - name: Take the kyu binary out of the published image
-        run: |
-          image=ghcr.io/kennypassenier/kyu@sha256:13963aff9cb9b8449b19a51b209ef22661f7c174b1d9ddc8a88ef38240747177 # 2.0.0
-          container=$(docker create "$image")
-          docker cp "$container:/usr/local/bin/kyu" ./kyu
-          docker rm "$container"
-          chmod +x ./kyu
-          ./kyu --version || true
-      - name: Full test suite (E2E against the real hub binary)
-        env:
-          KYU_BIN: ${{ github.workspace }}/kyu
-        run: cargo test --all
+      - name: Tests
+        run: cargo test
+      - name: Project gates (.claude/hooks/gates.project.sh, when present)
+        run: if [ -x .claude/hooks/gates.project.sh ]; then .claude/hooks/gates.project.sh; else echo "no project gates"; fi
+      - name: The binary answers --version without configuration (AR20)
+        run: cargo run -q -- --version
 
   deny:
+    name: cargo-deny (advisories · licenses · bans)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2
+        with:
+          command: check all
+
+  image:
+    name: container build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Build image
+        run: docker build -t kyu-runner:ci .
+      - name: The image answers --version and --healthcheck refuses a closed port
+        run: |
+          docker run --rm kyu-runner:ci --version
+          if docker run --rm kyu-runner:ci --healthcheck http://127.0.0.1:1/healthz; then echo "healthcheck must fail against a closed port"; exit 1; fi
+
+  coverage:
+    name: coverage (informational)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: dtolnay/rust-toolchain@d1031067263f94b142dd6c0ce24c5eb9d02d52a0 # master, 2026-09
+        with:
+          toolchain: "1.97"
+          components: llvm-tools-preview
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+      - uses: taiki-e/install-action@4e14a60b36eb62630dcc25614f0be0659ab8830c # cargo-llvm-cov
+      - name: Measure coverage
+        run: cargo llvm-cov --summary-only

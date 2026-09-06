@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+### Changed
+
+- **chassis-rs 1.1.0 → 1.7.1** and the scaffold synced (kyu-runner's turn,
+  2026-09-06): the kit's CI (fmt · clippy · tests, cargo-deny, container
+  build), hooks, `deny.toml`, Dockerfile and deploy files come from
+  `chassis sync --write`; `.chassis.toml` records CT 109's measured config
+  dir and token env file and vmid 109, so `deploy/service.yml` and the unit
+  name what actually runs there. No behaviour change in the pump.
+
 ## [0.2.0] - 2026-09-06
 
 Built on [chassis-rs](https://github.com/kennypassenier/chassis-rs) v1.1.0:

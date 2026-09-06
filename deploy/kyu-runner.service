@@ -11,14 +11,14 @@
 # Install: install -D -m755 kyu-runner /opt/kyu-runner/bin/kyu-runner (the
 # service owns that directory: chown -R kyu-runner: /opt/kyu-runner), copy
 # this file to /etc/systemd/system/kyu-runner.service, create the user
-# (kyu-runner), the state dir (/var/lib/kyu-runner) and the env file
-# (/etc/kyu-runner/kyu-runner.env, 0640 root:kyu-runner), then
+# (kyu-runner), the state dir (/appdata/kyu/kyu-runner-config) and the env file
+# (/appdata/kyu/kyu-runner-config/token.env, 0640 root:kyu-runner), then
 # systemctl enable --now kyu-runner.
 
 [Unit]
-Description=kyu-runner — Stateless pump from the kyu hub to Home Assistant webhooks
+Description=kyu-runner — Pulls topics from the kyu hub and pushes each message to Home Assistant
 Wants=network-online.target
-After=network-online.target kyu.service
+After=network-online.target
 StartLimitIntervalSec=0
 StartLimitBurst=0
 
@@ -26,20 +26,21 @@ StartLimitBurst=0
 Type=notify
 User=kyu-runner
 Group=kyu-runner
-EnvironmentFile=/etc/kyu-runner/kyu-runner.env
-WorkingDirectory=/var/lib/kyu-runner
+EnvironmentFile=/appdata/kyu/kyu-runner-config/token.env
+WorkingDirectory=/appdata/kyu/kyu-runner-config
 ExecStartPre=/opt/kyu-runner/bin/kyu-runner --check
 ExecStart=/opt/kyu-runner/bin/kyu-runner
 Restart=always
-# kyu-runner specific (kept from the pre-chassis unit).
-MemoryMax=128M
-RestrictRealtime=yes
 RestartSec=5s
 KillSignal=SIGTERM
 # Above the service's shutdown_timeout_ms (default 10 s), so N1's bound
 # is the one that decides, not systemd's.
 TimeoutStopSec=60
 # Mirrored so `--check` can warn when the shutdown timeout would outlive it (critic #20).
+# Explicit, not the binary's compiled-in default (CF-6 d, 2026-09-06): the
+# unit says where the state lives, so a binary built with another default
+# still runs against this machine's measured directory.
+Environment=KYU_RUNNER_STATE_DIR=/appdata/kyu/kyu-runner-config
 Environment=KYU_RUNNER_TIMEOUT_STOP_SECS=60
 NoNewPrivileges=yes
 PrivateTmp=yes
@@ -48,7 +49,7 @@ ProtectHome=yes
 ProtectKernelTunables=yes
 ProtectControlGroups=yes
 RestrictSUIDSGID=yes
-ReadWritePaths=/var/lib/kyu-runner /var/lib/kyu-runner-pre-update /opt/kyu-runner/bin
+ReadWritePaths=/appdata/kyu/kyu-runner-config /appdata/kyu/kyu-runner-config-pre-update /opt/kyu-runner/bin
 # S2: the swap needs write access to the binary's OWN directory only; a
 # code-execution bug can then replace this service's binary, not latch or
 # its neighbours. The rest is systemd's free hardening for a network daemon.
