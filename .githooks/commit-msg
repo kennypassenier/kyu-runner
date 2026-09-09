@@ -1,14 +1,43 @@
 #!/usr/bin/env bash
+# HOOK_VERSION=2
 # Traceability gate (standing rule 4): every commit message names the IDs
 # it implements, so `git log` stays a map from code to decisions.
-set -euo pipefail
+#
+# This is the git-native layer. It runs from git itself and depends on
+# nothing but bash and grep — no Claude, no dev-procedure checkout, no
+# network. That independence is deliberate (Kenny, 2026-09-09): the
+# enforcement has to survive any change of tooling or subscription.
+#
+# Optional per project: ship .githooks/guarded-paths.sh printing the
+# staged paths the code rules apply to, and a commit touching none of
+# them passes untouched — that is how a repository holding documents
+# beside code keeps its document commits free. Without that file every
+# commit is held to the rule, which is the default.
+#
+# Two ID shapes are accepted. The house scheme is a kind word, an
+# optional domain and a number: [feat-storage-12], [arch-7, gap-5]. The
+# older letter-plus-digit shape stays valid because history is not
+# rewritten and 1068 existing commits carry it.
+set -u
 
-msg_file="$1"
+msg_file="${1:?usage: commit-msg <file>}"
+
+root="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+if [ -n "$root" ] && [ -x "$root/.githooks/guarded-paths.sh" ]; then
+  guarded="$("$root/.githooks/guarded-paths.sh" "$root" 2>/dev/null || true)"
+  if [ -z "$guarded" ]; then
+    exit 0
+  fi
+fi
 
 if ! grep -qE '\[(meta|[A-Za-z]{1,4}[0-9][^]]*|[a-z]{3,}(-[a-z0-9]+)*-[0-9]+[^]]*)\]' "$msg_file"; then
   {
     echo "COMMIT BLOCKED — message lacks feature/milestone IDs (standing rule 4)."
-    echo "Add the IDs this commit implements, e.g.: feat(L1): first route [K2, AR3]"
+    if [ -n "${guarded:-}" ]; then
+      echo "This commit touches guarded paths:"
+      printf '  %s\n' $guarded
+    fi
+    echo "Add the IDs this commit implements, e.g.: feat(sync): groups [feat-storage-12, arch-7]"
     echo "Pure infrastructure commits use [meta]."
   } >&2
   exit 1

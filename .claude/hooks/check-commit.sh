@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# HOOK_VERSION=2
 # Dev-procedure commit gate (option B): a PreToolUse hook on the Bash
 # tool. Blocks `git commit` unless (1) the project's gates pass and
 # (2) the commit message carries feature/milestone IDs in brackets.
@@ -149,6 +150,29 @@ if [ -n "$target" ]; then
   [ -n "$root" ] && project_dir="$root"
 fi
 
+# Guarded paths (optional, opt-in per project — generalised from
+# JobTracker's copy on 2026-09-09 so one canonical file serves every
+# project). A repository that holds documents beside code may ship
+# .githooks/guarded-paths.sh printing the staged paths the code rules
+# apply to; a commit touching none of them passes untouched. Without that
+# file every commit is gated, which is the default and what most projects
+# want.
+guarded=""
+if [ -x "$project_dir/.githooks/guarded-paths.sh" ]; then
+  guarded=$("$project_dir/.githooks/guarded-paths.sh" "$project_dir" 2>/dev/null || true)
+  if [ -z "$guarded" ]; then
+    # The command may stage files itself, in which case the index is not
+    # yet updated at hook time. Ask the helper for its own pattern and
+    # look only at what the `git add` names — a path quoted inside a
+    # commit message is not a staged path (JobTracker C4).
+    pattern=$("$project_dir/.githooks/guarded-paths.sh" --pattern 2>/dev/null || true)
+    if [ -n "$pattern" ] && printf '%s' "$cmd" | grep -oE 'git add[^&|;]*' | grep -qE "$pattern"; then
+      guarded="(paths named in the git add of the command)"
+    fi
+  fi
+  [ -z "$guarded" ] && exit 0
+fi
+
 # Gate 1: the project's own quality gates (fmt/lint/tests). The project
 # defines what that means in .claude/hooks/gates.sh (see gates.example.sh).
 gates="$project_dir/.claude/hooks/gates.sh"
@@ -163,7 +187,15 @@ if [ -x "$gates" ]; then
 fi
 
 # Gate 2: traceability (standing rule 4). The message must contain IDs
-# in brackets, e.g. [W12, AR9] or [L4b] — or [meta] for infra commits.
+# in brackets — [feat-safety-4], [arch-7, gap-5] — or [meta] for infra
+# commits.
+#
+# Two shapes are accepted on purpose (2026-09-09, the naming decision).
+# The spelled-out shape is the house scheme: a kind word of three letters
+# or more, optional domain words, and a number. The old letter-plus-digit
+# shape ([W12a, AR9]) stays valid because 1068 existing commits carry it
+# and history is not rewritten — a project mid-migration must be able to
+# commit under both.
 #
 # PROC-H2 (kp-themes, 2026-09-04): this reads the COMMAND, so a message
 # handed over with `-F <file>` carries no IDs the check can see and was
@@ -185,9 +217,6 @@ if [ -n "$message_file" ] && [ "$message_file" != "-" ] && [ -r "$message_file" 
 $(cat "$message_file")"
 fi
 
-# 2026-09-09: the house ID scheme became a kind word, an optional domain
-# and a number (feat-storage-12, arch-7). Both shapes are accepted — the
-# old letter-plus-digit one stays valid because history is not rewritten.
 if ! printf '%s' "$haystack" | grep -qE '\[(meta|[A-Za-z]{1,4}[0-9]|[a-z]{3,}(-[a-z0-9]+)*-[0-9]+)[^]]*\]'; then
   {
     echo "COMMIT BLOCKED — message lacks feature/milestone IDs (standing rule 4)."
