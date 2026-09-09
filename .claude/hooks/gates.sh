@@ -7,6 +7,14 @@ set -euo pipefail
 
 cd "$(git rev-parse --show-toplevel)"
 
+# Git exports GIT_DIR (absolute in a linked worktree), GIT_INDEX_FILE and
+# friends to this hook. The suite below spawns git itself (the scaffold E2E
+# runs `chassis new`, which inits and commits a fresh repository); a child
+# inheriting them acts on THIS repository instead — the first commit from a
+# worktree under .claude/worktrees/ put the scaffold on the committer's
+# branch (2026-09-07). The toplevel is resolved above, so drop them here.
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_PREFIX GIT_COMMON_DIR
+
 # Standing rule 7: a gate that does not predict the build is not a gate.
 # The checks rewrite files (cargo refreshes Cargo.lock); anything rewritten
 # AFTER `git add` is green here and absent from the commit, so the tree is

@@ -13,12 +13,10 @@ async fn l2_k1_k2_k3_ar16_the_pump_delivers_byte_for_byte_and_acks() {
     let hub = Hub::start().await;
     let ha = FakeHa::start();
     let topic = "l2.happy";
-    let mut runner = Runner::start(&route_config(
+    let mut runner = Runner::start(
         &hub,
-        "happy",
-        topic,
-        &ha.url("/api/webhook/x"),
-    ));
+        &route_config(&hub, "happy", topic, &ha.url("/api/webhook/x")),
+    );
 
     // Published AFTER the runner's first poll: the topic is born under
     // the runner's feet, exercising the AR16 replay path — the first
@@ -56,12 +54,10 @@ async fn l2_s1_a_500_from_ha_is_not_acked_and_the_message_returns() {
     let ha = FakeHa::start();
     ha.set_mode(HaMode::Fail(500));
     let topic = "l2.retry";
-    let runner = Runner::start(&route_config(
+    let runner = Runner::start(
         &hub,
-        "retry",
-        topic,
-        &ha.url("/api/webhook/x"),
-    ));
+        &route_config(&hub, "retry", topic, &ha.url("/api/webhook/x")),
+    );
 
     wait_first_poll(&runner).await;
     publish(&hub, topic, "text/plain", "must-arrive").await;
@@ -98,12 +94,10 @@ async fn l2_s2_ar15_an_outage_accumulates_unclaimed_and_drains_in_order() {
     let hub = Hub::start().await;
     let ha = FakeHa::start();
     let topic = "l2.outage";
-    let runner = Runner::start(&route_config(
+    let runner = Runner::start(
         &hub,
-        "outage",
-        topic,
-        &ha.url("/api/webhook/x"),
-    ));
+        &route_config(&hub, "outage", topic, &ha.url("/api/webhook/x")),
+    );
 
     wait_first_poll(&runner).await;
     publish(&hub, topic, "text/plain", "m0").await;
@@ -166,7 +160,7 @@ async fn l2_s3_kill_nine_mid_delivery_loses_nothing() {
         "webhook_timeout_ms = 3000\npolicy = { lease_ms = 12000 }\nwebhook_url =",
     );
     ha.set_mode(HaMode::SlowOk(Duration::from_secs(2)));
-    let mut runner = Runner::start(&config);
+    let mut runner = Runner::start(&hub, &config);
     publish(&hub, topic, "text/plain", "precious").await;
 
     // The hit is recorded before the slow response completes: kill the
@@ -178,7 +172,7 @@ async fn l2_s3_kill_nine_mid_delivery_loses_nothing() {
     runner.kill_hard();
 
     ha.set_mode(HaMode::Ok200);
-    let runner2 = Runner::start(&config);
+    let runner2 = Runner::start(&hub, &config);
     wait_until("the redelivery", Duration::from_secs(60), || {
         ha.hits()
             .iter()
@@ -214,7 +208,7 @@ async fn l2_s4_k4_a_permanently_failing_webhook_dead_letters_visibly() {
          policy = { lease_ms = 12000, max_attempts = 2, backoff_ms = 200 }\n\
          webhook_url =",
     );
-    let runner = Runner::start(&config);
+    let runner = Runner::start(&hub, &config);
     publish(&hub, topic, "text/plain", "the-poison-payload").await;
 
     wait_until("both nacks", Duration::from_secs(60), || {
@@ -253,7 +247,7 @@ async fn l2_ar17_a_redirect_is_a_failure_never_followed() {
         "webhook_url =",
         "webhook_timeout_ms = 3000\npolicy = { lease_ms = 12000 }\nwebhook_url =",
     );
-    let mut runner = Runner::start(&config);
+    let mut runner = Runner::start(&hub, &config);
     publish(&hub, topic, "text/plain", "not-for-elsewhere").await;
 
     wait_until("retries against the 302", Duration::from_secs(30), || {
@@ -278,16 +272,18 @@ async fn l2_ar17_a_redirect_is_a_failure_never_followed() {
 
 #[tokio::test]
 async fn l2_k9_ar7_the_token_reaches_the_hub_but_never_the_logs() {
-    let token = "supergeheim-token-die-nergens-mag-opduiken";
-    let hub = Hub::start_with_door(token).await;
+    let hub = Hub::start().await;
+    // Since 3.0.0 the hub issues this token itself; the claim is
+    // unchanged — whatever the runner sends must never reach a log line.
+    let token = hub.client_token().to_string();
     let ha = FakeHa::start();
     let topic = "l2.door";
     let sentinel = "privacy-sentinel-payload";
 
     let config = route_config(&hub, "door", topic, &ha.url("/api/webhook/x"));
-    let runner = Runner::start_with_env(&config, &[("KYU_RUNNER_TOKEN", token)]);
+    let runner = Runner::start_with_env(&hub, &config, &[("KYU_RUNNER_TOKEN", &token)]);
     wait_first_poll(&runner).await;
-    publish_authed(&hub, Some(token), topic, "text/plain", sentinel).await;
+    publish_authed(&hub, Some(&token), topic, "text/plain", sentinel).await;
 
     wait_until("the doored delivery", Duration::from_secs(30), || {
         ha.hits().iter().any(|hit| hit.body_str() == sentinel)
@@ -295,7 +291,7 @@ async fn l2_k9_ar7_the_token_reaches_the_hub_but_never_the_logs() {
     .await;
     let log = runner.log();
     assert!(
-        !log.contains(token),
+        !log.contains(&token),
         "the token must never reach a log line (rule 10/AR7)"
     );
     assert!(
@@ -306,19 +302,18 @@ async fn l2_k9_ar7_the_token_reaches_the_hub_but_never_the_logs() {
 
 #[tokio::test]
 async fn l2_k9_a_missing_token_logs_the_apps_remedy_once_without_flooding() {
-    // The hub refuses tokens under 16 characters — keep this one long.
-    let token = "deur-dicht-en-op-slot-gedraaid";
-    let hub = Hub::start_with_door(token).await;
+    let hub = Hub::start().await;
     let ha = FakeHa::start();
     let topic = "l2.locked";
 
-    let runner = Runner::start(&route_config(
+    // The runner is started with NO token against a hub whose door is
+    // always on: the 401 path, which is what this test is about.
+    let runner = Runner::start_with_env(
         &hub,
-        "locked",
-        topic,
-        &ha.url("/api/webhook/x"),
-    ));
-    publish_authed(&hub, Some(token), topic, "text/plain", "waits").await;
+        &route_config(&hub, "locked", topic, &ha.url("/api/webhook/x")),
+        &[("KYU_RUNNER_TOKEN", NO_HUB_TOKEN)],
+    );
+    publish(&hub, topic, "text/plain", "waits").await;
 
     wait_until("the 401 remedy", Duration::from_secs(30), || {
         runner.log().contains("/apps")
@@ -341,12 +336,10 @@ async fn l2_k2_ar4_a_binary_payload_survives_byte_for_byte() {
     let hub = Hub::start().await;
     let ha = FakeHa::start();
     let topic = "l2.binary";
-    let runner = Runner::start(&route_config(
+    let runner = Runner::start(
         &hub,
-        "binary",
-        topic,
-        &ha.url("/api/webhook/x"),
-    ));
+        &route_config(&hub, "binary", topic, &ha.url("/api/webhook/x")),
+    );
 
     wait_first_poll(&runner).await;
     // Deliberately not UTF-8: a lossy string round-trip would corrupt it.
@@ -410,7 +403,7 @@ async fn l2_f1_an_oversize_message_is_nacked_and_dead_letters_without_oom() {
             .collect::<Vec<_>>()
             .join("\n")
     );
-    let runner = Runner::start(&config);
+    let runner = Runner::start(&hub, &config);
     publish(&hub, topic, "text/plain", &"X".repeat(8 * 1024)).await;
 
     wait_until("the oversize warn", Duration::from_secs(30), || {
@@ -436,8 +429,8 @@ async fn l2_f1_an_oversize_message_is_nacked_and_dead_letters_without_oom() {
 
 #[tokio::test]
 async fn l2_k9_the_token_stays_out_of_failure_path_and_json_logs() {
-    let token = "geheim-token-voor-de-faalpaden-check";
-    let mut hub = Hub::start_with_door(token).await;
+    let mut hub = Hub::start().await;
+    let token = hub.client_token().to_string();
     let ha = FakeHa::start();
     let topic = "l2.doorfail";
     let sentinel = "faalpad-sentinel-payload";
@@ -446,15 +439,16 @@ async fn l2_k9_the_token_stays_out_of_failure_path_and_json_logs() {
     // widest possible net for a leak (gap audit #5).
     let config = route_config(&hub, "doorfail", topic, &ha.url("/api/webhook/x"));
     let runner = Runner::start_with_env(
+        &hub,
         &config,
         &[
-            ("KYU_RUNNER_TOKEN", token),
+            ("KYU_RUNNER_TOKEN", &token),
             ("KYU_RUNNER_LOG", "trace"),
             ("KYU_RUNNER_LOG_FORMAT", "json"),
         ],
     );
     wait_first_poll(&runner).await;
-    publish_authed(&hub, Some(token), topic, "text/plain", sentinel).await;
+    publish_authed(&hub, Some(&token), topic, "text/plain", sentinel).await;
     wait_until("the delivery", Duration::from_secs(30), || {
         ha.hits().iter().any(|hit| hit.body_str() == sentinel)
     })
@@ -470,7 +464,7 @@ async fn l2_k9_the_token_stays_out_of_failure_path_and_json_logs() {
     let log = runner.log();
     assert!(log.contains("{\""), "json log format is in effect");
     assert!(
-        !log.contains(token),
+        !log.contains(&token),
         "the token must survive trace-level failure paths unlogged (rule 10)"
     );
     assert!(

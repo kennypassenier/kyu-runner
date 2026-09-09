@@ -11,12 +11,15 @@ use support::*;
 async fn l4_k6_a_dead_letter_event_reaches_the_warning_webhook() {
     let hub = Hub::start().await;
     let ha = FakeHa::start();
-    let runner = Runner::start(&route_config(
+    let runner = Runner::start(
         &hub,
-        "kyu-events",
-        "kyu.events",
-        &ha.url("/api/webhook/hub_kyu_events"),
-    ));
+        &route_config(
+            &hub,
+            "kyu-events",
+            "kyu.events",
+            &ha.url("/api/webhook/hub_kyu_events"),
+        ),
+    );
 
     // kyu.events already exists on a fresh hub, so there is no
     // unborn line to wait for — wait until the runner's first poll has
@@ -82,7 +85,7 @@ async fn l4_w3_the_configured_policy_lands_on_the_hub_and_is_logged() {
         "webhook_url =",
         "policy = { lease_ms = 45000, max_attempts = 25 }\nwebhook_url =",
     );
-    let runner = Runner::start(&config);
+    let runner = Runner::start(&hub, &config);
 
     wait_first_poll(&runner).await;
     // The subscription exists only after a successful poll on a born
@@ -117,7 +120,7 @@ async fn l4_w4_healthz_reports_route_states_when_opted_in() {
         "hub_url =",
         &format!("healthz_listen = \"127.0.0.1:{port}\"\nhub_url ="),
     );
-    let runner = Runner::start(&config);
+    let runner = Runner::start(&hub, &config);
     wait_first_poll(&runner).await;
 
     let response = reqwest::Client::new()
@@ -144,12 +147,10 @@ async fn l4_ar16_a_pre_existing_topic_starts_from_now_not_from_history() {
     for body in ["h1", "h2", "h3"] {
         publish(&hub, topic, "text/plain", body).await;
     }
-    let runner = Runner::start(&route_config(
+    let runner = Runner::start(
         &hub,
-        "historian",
-        topic,
-        &ha.url("/api/webhook/x"),
-    ));
+        &route_config(&hub, "historian", topic, &ha.url("/api/webhook/x")),
+    );
     let deadline = std::time::Instant::now() + Duration::from_secs(15);
     while !subscription_exists(&hub, topic, "ha-runner").await {
         assert!(std::time::Instant::now() < deadline, "no subscription");
@@ -186,7 +187,7 @@ async fn l4_k1_two_routes_run_independently_through_one_outage() {
         ha_alpha.url("/api/webhook/alpha"),
         ha_beta.url("/api/webhook/beta"),
     );
-    let runner = Runner::start(&config);
+    let runner = Runner::start(&hub, &config);
     wait_until("both first polls", Duration::from_secs(15), || {
         let log = runner.log();
         log.matches("topic not born yet").count() >= 2
@@ -231,7 +232,7 @@ async fn l4_w3_a_hub_refused_policy_warns_once_and_the_route_keeps_delivering() 
         "webhook_url =",
         "policy = { max_attempts = 0 }\nwebhook_url =",
     );
-    let runner = Runner::start(&config);
+    let runner = Runner::start(&hub, &config);
     wait_first_poll(&runner).await;
     publish(&hub, topic, "text/plain", "still-flows").await;
 
@@ -265,7 +266,7 @@ async fn l4_w4_the_config_key_is_what_opens_the_socket() {
     let port = free_port();
 
     let without = route_config(&hub, "silent", topic, &ha.url("/api/webhook/x"));
-    let runner = Runner::start(&without);
+    let runner = Runner::start(&hub, &without);
     wait_first_poll(&runner).await;
     assert!(
         std::net::TcpStream::connect(("127.0.0.1", port)).is_err(),
@@ -277,7 +278,7 @@ async fn l4_w4_the_config_key_is_what_opens_the_socket() {
         "hub_url =",
         &format!("healthz_listen = \"127.0.0.1:{port}\"\nhub_url ="),
     );
-    let runner = Runner::start(&with);
+    let runner = Runner::start(&hub, &with);
     wait_first_poll(&runner).await;
     let response = reqwest::Client::new()
         .get(format!("http://127.0.0.1:{port}/healthz"))
@@ -305,7 +306,7 @@ async fn l4_w4_healthz_reports_the_failure_state_not_a_frozen_ok() {
         "hub_url =",
         &format!("healthz_listen = \"127.0.0.1:{port}\"\nhub_url ="),
     );
-    let runner = Runner::start(&config);
+    let runner = Runner::start(&hub, &config);
     wait_first_poll(&runner).await;
 
     let state = || async {

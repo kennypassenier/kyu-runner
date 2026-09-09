@@ -17,7 +17,7 @@ gates hold from any session or terminal. After a fresh clone, run:
 
 | Field | Value |
 |---|---|
-| Current phase | all 11 phases done; 0.1.0 released 2026-08-30 |
+| Current phase | all 11 phases done; 0.2.0 released 2026-09-06, running on CT 109; kit-sync rounds since |
 | Last completed gate | Ratification forms 1-5 (2026-08-29/30): every phase 1-8 decision signed off, architecture frozen, docs approved |
 | Next gate | The rollout, when Kenny wants it: pick the LXC, create the HA automation FIRST, then the route, then a smoke test — and measure whether HA really answers 200 to an unknown webhook id. 1.0.0 follows that |
 | AFK mode | off |
@@ -50,6 +50,8 @@ message carries IDs in brackets (`[K3, AR2]`, `[L1]`, `[meta]`).
 Enforced twice over: `.githooks/pre-commit` + `.githooks/commit-msg`
 (repo-scoped, any session) and `.claude/hooks/check-commit.sh` via
 `.claude/settings.json`. CI re-runs the gates on every push.
+`.claude/hooks/gates.project.sh` adds the project's own check: a test
+total quoted in README.md or docs/TEST_PLAN.md must match the suite.
 
 ## Scratch hub for development/tests
 

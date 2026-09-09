@@ -12,6 +12,15 @@ use std::process::{Child, Command, Stdio};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
+/// The hub's admin token when a test does not pick one. Long enough for
+/// the hub's own minimum (it refuses tokens under 16 characters) and
+/// deliberately not a secret: it protects a throwaway hub on localhost.
+const ADMIN_TOKEN: &str = "suite-admin-token-lang-genoeg";
+
+/// Passed as `KYU_RUNNER_TOKEN` to start the runner with no hub token at
+/// all — the K9 case where the hub's door is shut in its face.
+pub const NO_HUB_TOKEN: &str = "\u{0}none";
+
 // ── Scratch hub ─────────────────────────────────────────────────────────
 
 enum HubProcess {
@@ -24,7 +33,7 @@ pub struct Hub {
     pub port: u16,
     data_dir: Option<tempfile::TempDir>,
     binary: Option<PathBuf>,
-    token: Option<String>,
+    client_token: Option<String>,
     log_path: Option<PathBuf>,
 }
 
@@ -93,17 +102,14 @@ fn hub_binary() -> Option<PathBuf> {
 }
 
 impl Hub {
+    /// A scratch hub with its door on — the only shape kyu 3.0.0 has.
+    /// It starts with an admin token and issues this handle a client
+    /// token for the three verbs.
     pub async fn start() -> Hub {
-        Self::start_inner(None).await
+        Self::start_inner().await
     }
 
-    /// A hub with the W2 door on: `token` is the master token scripts
-    /// send as a bearer.
-    pub async fn start_with_door(token: &str) -> Hub {
-        Self::start_inner(Some(token.to_string())).await
-    }
-
-    async fn start_inner(token: Option<String>) -> Hub {
+    async fn start_inner() -> Hub {
         let port = free_port();
         let data_dir = tempfile::TempDir::new().expect("hub data dir");
         let mut hub = Hub {
@@ -111,12 +117,67 @@ impl Hub {
             port,
             data_dir: Some(data_dir),
             binary: hub_binary(),
-            token,
             log_path: None,
+            client_token: None,
         };
         hub.launch();
         hub.wait_ready().await;
+        hub.mint_client_token().await;
         hub
+    }
+
+    /// The bearer every caller of the three verbs needs since kyu 3.0.0:
+    /// a *client* token, issued the way the Clients page and `chassis
+    /// clients issue` do it — `POST /api/clients` as the admin, then the
+    /// reveal. Before 3.0.0 a hub without `KYU_TOKEN` had no door at all
+    /// and the suite published anonymously; that state no longer exists
+    /// (measured 2026-09-09: publishing without a bearer answers 401).
+    async fn mint_client_token(&mut self) {
+        let client = reqwest::Client::new();
+        let admin = self.admin_token().to_string();
+        let created = client
+            .post(format!("{}/api/clients", self.base()))
+            .bearer_auth(&admin)
+            .json(&serde_json::json!({ "name": "kyu-runner-suite" }))
+            .send()
+            .await
+            .expect("issue a client token on the hub");
+        assert_eq!(
+            created.status().as_u16(),
+            201,
+            "the hub refused to issue a client token. Its stderr said: {}",
+            self.stderr()
+        );
+        let view: serde_json::Value = created.json().await.expect("the issued client as JSON");
+        let id = view["id"].as_str().expect("the issued client has an id");
+        let revealed: serde_json::Value = client
+            .get(format!("{}/api/clients/{id}/token", self.base()))
+            .bearer_auth(&admin)
+            .send()
+            .await
+            .expect("reveal the client token")
+            .json()
+            .await
+            .expect("the reveal as JSON");
+        let token = revealed["token"]
+            .as_str()
+            .expect("the reveal carries a token")
+            .to_string();
+        self.client_token = Some(token);
+    }
+
+    /// The admin token the hub is started with: the operator's secret,
+    /// used here to mint client tokens and to reach the `/api/…`
+    /// management routes.
+    pub fn admin_token(&self) -> &str {
+        ADMIN_TOKEN
+    }
+
+    /// The bearer the runner and the test verbs send on the three verbs.
+    pub fn client_token(&self) -> &str {
+        self.client_token
+            .as_deref()
+            .expect("the hub minted a client token at start")
     }
 
     pub fn base(&self) -> String {
@@ -134,6 +195,11 @@ impl Hub {
         // 64 hex chars: the hub requires KYU_SECRET_KEY next to the
         // token; a fixed test key is fine — nothing real is protected.
         let secret_key = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+        // Since kyu 3.0.0 the dashboard is compiled in and the hub refuses
+        // to start without both secrets, so they are no longer optional
+        // the way the 2.x door was. A test that wants the runner denied
+        // gives the runner a wrong token, not the hub a missing one.
+        let admin_token = ADMIN_TOKEN;
         let process = match &self.binary {
             Some(binary) => {
                 let log = tempfile::NamedTempFile::new().expect("hub log file");
@@ -142,14 +208,13 @@ impl Hub {
                 let mut command = Command::new(binary);
                 command
                     .env("KYU_LISTEN", &listen)
-                    .env("KYU_DATA_DIR", &data)
+                    // KYU_DATA_DIR is the 2.x name and warns since 3.0.0.
+                    .env("KYU_STATE_DIR", &data)
                     .env("KYU_LOG", "warn")
+                    .env("KYU_TOKEN", admin_token)
+                    .env("KYU_SECRET_KEY", secret_key)
                     .stdout(Stdio::null())
                     .stderr(log_file);
-                if let Some(token) = &self.token {
-                    command.env("KYU_TOKEN", token);
-                    command.env("KYU_SECRET_KEY", secret_key);
-                }
                 let child = command
                     .spawn()
                     .expect("spawn kyu binary (set KYU_BIN or build ~/Projects/kyu)");
@@ -157,10 +222,12 @@ impl Hub {
             }
             None => {
                 let image = std::env::var("KYU_IMAGE")
-                    // Pinned to the published 2.0.0 image (the hub the suite was written
-                    // against); the kit CI has no KYU_BIN, so docker pulls this. 1.0.0 was
-                    // never on GHCR — CI failed on it the first time the kit ran the suite.
-                    .unwrap_or_else(|_| "ghcr.io/kennypassenier/kyu@sha256:13963aff9cb9b8449b19a51b209ef22661f7c174b1d9ddc8a88ef38240747177".into());
+                    // Pinned to the published v3.0.0 image — the version the
+                    // hub on CT 109 is heading for. It was 2.0.0 until
+                    // 2026-09-09; on 2.x the suite published without a bearer,
+                    // which 3.0.0 answers with 401, so CI would otherwise stay
+                    // green against a hub two majors behind production.
+                    .unwrap_or_else(|_| "ghcr.io/kennypassenier/kyu@sha256:d87d692cce8eb76340fce0fb740c9c1185f37adbcd91d761ccb69f567b111047".into());
                 let mut args: Vec<String> = vec![
                     "run".into(),
                     "-d".into(),
@@ -170,13 +237,11 @@ impl Hub {
                     "KYU_LISTEN=0.0.0.0:8080".into(),
                     "-e".into(),
                     "KYU_LOG=warn".into(),
+                    "-e".into(),
+                    format!("KYU_TOKEN={admin_token}"),
+                    "-e".into(),
+                    format!("KYU_SECRET_KEY={secret_key}"),
                 ];
-                if let Some(token) = &self.token {
-                    args.push("-e".into());
-                    args.push(format!("KYU_TOKEN={token}"));
-                    args.push("-e".into());
-                    args.push(format!("KYU_SECRET_KEY={secret_key}"));
-                }
                 args.push(image);
                 let output = Command::new("docker")
                     .args(&args)
@@ -238,15 +303,34 @@ impl Hub {
         }
     }
 
-    /// Start it again with a different door token (G5 drill): the hub's
-    /// admission changed, the runner's token did not.
-    pub async fn restart_with_token(&mut self, token: &str) {
+    /// Start again on the same port with an EMPTY store, so the client
+    /// token this hub issued is no longer known and its holder is denied
+    /// (K9/G5 drill). Returns the original store; hand it back to
+    /// [`Hub::restore_clients`] to make that same token valid again.
+    ///
+    /// Before kyu 3.0.0 this drill simply restarted the hub with another
+    /// master token. A client token cannot be chosen that way — the hub
+    /// generates it — so what moves here is the store behind the door,
+    /// not the token in front of it. The runner's token never changes,
+    /// which is the property under test.
+    pub async fn restart_without_clients(&mut self) -> tempfile::TempDir {
         assert!(self.process.is_none(), "stop() first");
         assert!(
             self.binary.is_some(),
             "the token drill needs KYU_BIN (skipped under docker)"
         );
-        self.token = Some(token.to_string());
+        let known = self.data_dir.take().expect("data dir");
+        self.data_dir = Some(tempfile::TempDir::new().expect("empty hub store"));
+        self.launch();
+        self.wait_ready().await;
+        known
+    }
+
+    /// Put the original store back: the token from before is accepted
+    /// again, without the runner having restarted.
+    pub async fn restore_clients(&mut self, known: tempfile::TempDir) {
+        assert!(self.process.is_none(), "stop() first");
+        self.data_dir = Some(known);
         self.launch();
         self.wait_ready().await;
     }
@@ -280,13 +364,14 @@ impl Drop for Hub {
 // ── Hub-side test verbs (the dashboard-documented API) ─────────────────
 
 pub async fn publish(hub: &Hub, topic: &str, content_type: &str, body: &str) {
-    publish_authed(hub, None, topic, content_type, body).await;
+    publish_authed(hub, Some(hub.client_token()), topic, content_type, body).await;
 }
 
 /// Raw publish: arbitrary bytes, optionally without a content-type.
 pub async fn publish_bytes(hub: &Hub, topic: &str, content_type: Option<&str>, body: Vec<u8>) {
     let mut request = reqwest::Client::new()
         .post(format!("{}/t/{topic}", hub.base()))
+        .bearer_auth(hub.client_token())
         .body(body);
     if let Some(content_type) = content_type {
         request = request.header("content-type", content_type);
@@ -339,6 +424,7 @@ pub async fn poll_once_from(
             "{}/t/{topic}/next?as={subscription}&wait=0{from}",
             hub.base()
         ))
+        .bearer_auth(hub.client_token())
         .send()
         .await
         .expect("poll");
@@ -364,6 +450,7 @@ pub async fn ack(hub: &Hub, topic: &str, subscription: &str, id: &str) {
             "{}/t/{topic}/ack/{id}?as={subscription}",
             hub.base()
         ))
+        .bearer_auth(hub.client_token())
         .send()
         .await
         .expect("ack");
@@ -376,6 +463,7 @@ pub async fn put_policy(hub: &Hub, topic: &str, subscription: &str, policy: &str
             "{}/api/t/{topic}/subs/{subscription}/policy",
             hub.base()
         ))
+        .bearer_auth(hub.admin_token())
         .header("content-type", "application/json")
         .body(policy.to_string())
         .send()
@@ -397,6 +485,7 @@ pub async fn nack_dead(hub: &Hub, topic: &str, subscription: &str, id: &str) {
             "{}/t/{topic}/nack/{id}?as={subscription}&dead=true",
             hub.base()
         ))
+        .bearer_auth(hub.client_token())
         .send()
         .await
         .expect("nack dead");
@@ -409,6 +498,7 @@ pub async fn get_policy(hub: &Hub, topic: &str, subscription: &str) -> String {
             "{}/api/t/{topic}/subs/{subscription}/policy",
             hub.base()
         ))
+        .bearer_auth(hub.admin_token())
         .send()
         .await
         .expect("get policy")
@@ -426,6 +516,7 @@ pub async fn subscription_exists(hub: &Hub, topic: &str, subscription: &str) -> 
             "{}/api/t/{topic}/subs/{subscription}/policy",
             hub.base()
         ))
+        .bearer_auth(hub.admin_token())
         .send()
         .await
         .map(|response| response.status().is_success())
@@ -438,6 +529,7 @@ pub async fn dead_letters(hub: &Hub, topic: &str, subscription: &str) -> String 
             "{}/api/t/{topic}/subs/{subscription}/dead",
             hub.base()
         ))
+        .bearer_auth(hub.admin_token())
         .send()
         .await
         .expect("dead letters")
@@ -653,11 +745,16 @@ pub struct Runner {
 }
 
 impl Runner {
-    pub fn start(config_text: &str) -> Runner {
-        Self::start_with_env(config_text, &[])
+    pub fn start(hub: &Hub, config_text: &str) -> Runner {
+        Self::start_with_env(hub, config_text, &[])
     }
 
-    pub fn start_with_env(config_text: &str, env: &[(&str, &str)]) -> Runner {
+    /// Start the runner against `hub`. Since kyu 3.0.0 every caller of the
+    /// three verbs needs a bearer, so the hub's client token is passed by
+    /// default; a test that wants the runner denied overrides
+    /// `KYU_RUNNER_TOKEN` in `env` with a wrong one, or passes
+    /// [`NO_HUB_TOKEN`] to send none at all.
+    pub fn start_with_env(hub: &Hub, config_text: &str, env: &[(&str, &str)]) -> Runner {
         // Since the chassis migration the observation socket is the kit's
         // and always listens: a test that used to opt in with
         // `healthz_listen = "..."` in the config now gets that address as
@@ -702,11 +799,18 @@ impl Runner {
             .env("KYU_RUNNER_LOG", "info,kyu_runner=debug")
             .stdout(Stdio::null())
             .stderr(log_file);
+        // The hub's door is always on since 3.0.0, so the runner gets a
+        // working token unless the test says otherwise below.
+        command.env("KYU_RUNNER_HUB_TOKEN", hub.client_token());
         for (name, value) in env {
             // The hub token has its own name since 0.2.0 (KYU_RUNNER_TOKEN
             // is the kit's dashboard login token); tests keep the old name.
             if *name == "KYU_RUNNER_TOKEN" {
-                command.env("KYU_RUNNER_HUB_TOKEN", value);
+                if *value == NO_HUB_TOKEN {
+                    command.env_remove("KYU_RUNNER_HUB_TOKEN");
+                } else {
+                    command.env("KYU_RUNNER_HUB_TOKEN", value);
+                }
             } else {
                 command.env(name, value);
             }

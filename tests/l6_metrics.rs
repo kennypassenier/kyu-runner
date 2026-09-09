@@ -40,7 +40,7 @@ async fn l6_w6_counters_move_on_delivery_and_on_nack() {
             "hub_url =",
             &format!("healthz_listen = \"127.0.0.1:{port}\"\nhub_url ="),
         );
-    let runner = Runner::start(&config);
+    let runner = Runner::start(&hub, &config);
     wait_first_poll(&runner).await;
 
     // Baseline: both counters exist at zero, and /healthz still

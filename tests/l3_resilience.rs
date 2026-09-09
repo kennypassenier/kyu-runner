@@ -17,12 +17,10 @@ async fn l3_k7_a_hub_outage_is_one_log_line_and_recovery_is_automatic() {
     }
     let ha = FakeHa::start();
     let topic = "l3.outage";
-    let runner = Runner::start(&route_config(
+    let runner = Runner::start(
         &hub,
-        "hubdown",
-        topic,
-        &ha.url("/api/webhook/x"),
-    ));
+        &route_config(&hub, "hubdown", topic, &ha.url("/api/webhook/x")),
+    );
 
     wait_first_poll(&runner).await;
     publish(&hub, topic, "text/plain", "warmup").await;
@@ -86,7 +84,7 @@ async fn l3_w1_sigterm_mid_delivery_finishes_the_message_and_exits_zero() {
         "webhook_timeout_ms = 3000\npolicy = { lease_ms = 12000 }\nwebhook_url =",
     );
     ha.set_mode(HaMode::SlowOk(Duration::from_secs(2)));
-    let mut runner = Runner::start(&config);
+    let mut runner = Runner::start(&hub, &config);
     publish(&hub, topic, "text/plain", "in-flight").await;
 
     wait_until("the delivery to start", Duration::from_secs(30), || {
@@ -116,12 +114,10 @@ async fn l3_w1_sigterm_mid_delivery_finishes_the_message_and_exits_zero() {
 async fn l3_w1_sigint_also_stops_cleanly() {
     let hub = Hub::start().await;
     let ha = FakeHa::start();
-    let mut runner = Runner::start(&route_config(
+    let mut runner = Runner::start(
         &hub,
-        "sigint",
-        "l3.sigint",
-        &ha.url("/api/webhook/x"),
-    ));
+        &route_config(&hub, "sigint", "l3.sigint", &ha.url("/api/webhook/x")),
+    );
     wait_first_poll(&runner).await;
     runner.signal("-INT");
     let status = runner
@@ -151,7 +147,8 @@ async fn l3_ar1_a_panicking_route_is_respawned_and_the_message_survives() {
     // The debug-only hook panics the route on its first claimed
     // message; the supervisor must respawn it and the unacked claim
     // must redeliver (AR1 + K5).
-    let runner = Runner::start_with_env(&config, &[("KYU_RUNNER_TEST_PANIC_ROUTE", "fragile")]);
+    let runner =
+        Runner::start_with_env(&hub, &config, &[("KYU_RUNNER_TEST_PANIC_ROUTE", "fragile")]);
     publish(&hub, topic, "text/plain", "survives-the-panic").await;
 
     wait_until(
@@ -193,7 +190,7 @@ async fn l3_w1_a_second_signal_is_harmless_and_the_stop_still_finishes() {
     );
     // A delivery that would occupy the whole grace if left alone.
     ha.set_mode(HaMode::SlowOk(Duration::from_secs(12)));
-    let mut runner = Runner::start(&config);
+    let mut runner = Runner::start(&hub, &config);
     publish(&hub, topic, "text/plain", "in-flight").await;
     wait_until(
         "the slow delivery to start",
@@ -244,7 +241,7 @@ async fn l3_ar9_shutdown_never_outlasts_the_derived_grace() {
         "webhook_timeout_ms = 8000\npolicy = { lease_ms = 30000 }\nwebhook_url =",
     );
     ha.set_mode(HaMode::SlowOk(Duration::from_secs(30)));
-    let mut runner = Runner::start(&config);
+    let mut runner = Runner::start(&hub, &config);
     publish(&hub, topic, "text/plain", "stuck").await;
     wait_until(
         "the stuck delivery to start",
@@ -275,17 +272,22 @@ async fn l3_k9_a_route_resumes_once_the_hub_accepts_its_token_again() {
     // Scenario: the hub's door changes under a running runner — the
     // runner keeps its token, backs off, and must pick up by itself
     // once the hub accepts that token again, with no restart.
-    let mut hub = Hub::start_with_door("eerste-deurtoken-lang-genoeg").await;
+    let mut hub = Hub::start().await;
     if !hub.supports_restart() {
         eprintln!("SKIPPED: the token drill needs KYU_BIN (docker keeps no state)");
         return;
     }
     let ha = FakeHa::start();
     let topic = "l3.token";
-    let runner_token = "het-token-van-de-runner-zelf";
+    // The runner keeps THIS token for the whole test; only the hub's
+    // admission moves. Since 3.0.0 that means swapping the store the
+    // door consults, because a client token cannot be dictated.
+    let runner_token = hub.client_token().to_string();
 
     let config = route_config(&hub, "doorman", topic, &ha.url("/api/webhook/x"));
-    let runner = Runner::start_with_env(&config, &[("KYU_RUNNER_TOKEN", runner_token)]);
+    hub.stop();
+    let known_clients = hub.restart_without_clients().await;
+    let runner = Runner::start_with_env(&hub, &config, &[("KYU_RUNNER_TOKEN", &runner_token)]);
 
     wait_until("the 401 remedy", Duration::from_secs(30), || {
         runner.log().contains("/apps")
@@ -293,9 +295,9 @@ async fn l3_k9_a_route_resumes_once_the_hub_accepts_its_token_again() {
     .await;
     assert!(ha.hits().is_empty(), "nothing is delivered while denied");
 
-    // The hub is reconfigured to accept exactly the runner's token.
+    // The hub knows the runner's token again — the runner is untouched.
     hub.stop();
-    hub.restart_with_token(runner_token).await;
+    hub.restore_clients(known_clients).await;
 
     // Only publish once the runner is polling again: a subscription
     // created on an ALREADY existing topic starts from now (AR16), so
@@ -304,7 +306,7 @@ async fn l3_k9_a_route_resumes_once_the_hub_accepts_its_token_again() {
         runner.log().contains("topic not born yet")
     })
     .await;
-    publish_authed(&hub, Some(runner_token), topic, "text/plain", "na-de-deur").await;
+    publish_authed(&hub, Some(&runner_token), topic, "text/plain", "na-de-deur").await;
 
     wait_until(
         "delivery after the door reopened",

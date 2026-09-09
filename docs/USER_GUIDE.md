@@ -263,10 +263,21 @@ kyu-runner --version | --help | --print-config | --healthcheck | update | gen-se
 ```
 
 The command line is the kit's (chassis-rs): every knob is also an
-environment variable (`KYU_RUNNER_CONFIG`, `KYU_RUNNER_STATE_DIR`,
-`KYU_RUNNER_LISTEN`, `KYU_RUNNER_LOG`, `KYU_RUNNER_LOG_FORMAT`,
-`KYU_RUNNER_SHUTDOWN_TIMEOUT_MS`, the `KYU_RUNNER_UPDATE_*` family) and a
-key in the same config file; precedence flag > env > file > default.
+environment variable and a key in the same config file; precedence
+flag > env > file > default. The full table — key, env, flag, default,
+meaning — is in [KIT.md](KIT.md), and `kyu-runner --knobs` prints the
+same table from the running binary. It is not repeated here; the copy
+that used to live in this section went stale between kit versions.
+
+**What kyu-runner builds of the kit.** Only `core` and `self-update`.
+There is no dashboard, no login, no clients page and no theme picker:
+`/login` and `/clients` answer 404, and `/healthz` and `/metrics` are
+the whole HTTP surface. KIT.md describes the kit as a whole and labels
+each section with the feature it belongs to — the `dashboard` and
+`passkeys` sections do not apply to this binary, and neither do their
+knobs, even though `--knobs` lists them. `gen-secret` and `rekey` do
+exist on the command line, but the secrets they manage are the
+dashboard's, so this service has no use for them.
 `--check` validates the pump's config AND the kit's knobs, probes the state
 directory and exits — zero network calls, which is why it is safe as
 `ExecStartPre=` on a cold-booting LXC where the hub is not up yet.

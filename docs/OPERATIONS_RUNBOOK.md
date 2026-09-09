@@ -41,9 +41,27 @@ Reality checks baked into these procedures (from the Phase 4 critic):
 3. **HA side first (K6):** create the webhook automation(s) in HA for
    every route you are about to enable — see §6. Every webhook trigger
    sets `local_only: true`.
-4. Mint the app token: hub dashboard → **Apps** (`/clients`; the old `/apps`
-   address redirects there since kyu 3.0.0) → issue `kyu-runner` → copy the token. On the target LXC (the `read -rs` keeps the
-   token out of the shell history — standing rule 10):
+4. Mint the app token. Two ways, same token — the hub issues both from
+   the same client store.
+
+   **From the command line (kyu 3.0.0 and up, no browser).** `chassis
+   clients` (kit 1.8.0) talks to the hub's `/api/clients`, which kyu has
+   served since 3.0.0. Check the hub's version first — on kyu 2.x that
+   route does not exist and the command fails:
+   ```
+   curl -sS http://<hub>:8080/healthz | grep -o '"version":"[^"]*"'
+   export KYU_ADMIN_TOKEN=...          # the hub's own KYU_TOKEN, from its env file
+   chassis clients issue kyu-runner --url http://<hub>:8080 --token-env KYU_ADMIN_TOKEN
+   ```
+   It prints the token once on stdout and nothing else, so it can be
+   captured straight into the environment file on the target LXC.
+
+   **From the dashboard (any version).** Hub dashboard → **Apps**
+   (`/clients`; the old `/apps` address redirects there since kyu 3.0.0)
+   → issue `kyu-runner` → copy the token.
+
+   Either way, write it on the target LXC (the `read -rs` keeps the token
+   out of the shell history — standing rule 10):
    ```
    install -m 600 /dev/null /etc/kyu-runner/kyu-runner.env
    read -rs TOKEN && printf 'KYU_RUNNER_HUB_TOKEN=%s\n' "$TOKEN" > /etc/kyu-runner/kyu-runner.env && unset TOKEN
@@ -82,9 +100,10 @@ The runner's full state is: the binary (releases), the config + unit
 2. Copy `deploy/config.toml` and `deploy/kyu-runner.service` from this
    repo (they ARE the backup — check drift first if the old machine
    still answers: `diff deploy/config.toml /etc/kyu-runner/config.toml`).
-3. Re-mint the token on the hub's Apps page (`/clients`; revoke the old
-   `kyu-runner` app if it is still listed), write `token.env`
-   (install step 4).
+3. Re-mint the token (install step 4 — `chassis clients issue`, or the
+   hub's Apps page). Revoke the old `kyu-runner` client first if it is
+   still listed: `chassis clients revoke kyu-runner --url http://<hub>:8080
+   --token-env KYU_ADMIN_TOKEN`. Then write `token.env`.
 4. Enable + start + read back (install steps 6-7); smoke test one
    route (install step 8).
 5. Backlog: nothing to do — the hub owns all cursors; the new runner
