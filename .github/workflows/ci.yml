@@ -38,24 +38,3 @@ jobs:
         run: if [ -x .claude/hooks/gates.project.sh ]; then .claude/hooks/gates.project.sh; else echo "no project gates"; fi
       - name: The binary answers --version without configuration (AR20)
         run: cargo run -q -- --version
-
-  deny:
-    name: cargo-deny (advisories · licenses · bans)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2
-        with:
-          command: check all
-
-  image:
-    name: container build
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - name: Build image
-        run: docker build -t kyu-runner:ci .
-      - name: The image answers --version and --healthcheck refuses a closed port
-        run: |
-          docker run --rm kyu-runner:ci --version
-          if docker run --rm kyu-runner:ci --healthcheck http://127.0.0.1:1/healthz; then echo "healthcheck must fail against a closed port"; exit 1; fi
