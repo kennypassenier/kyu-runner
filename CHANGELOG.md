@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-09-09
+
 ### Changed
 
 - **The suite runs against kyu 3.0.0** (2026-09-09). The hub lost its
