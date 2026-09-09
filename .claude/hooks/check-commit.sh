@@ -185,10 +185,13 @@ if [ -n "$message_file" ] && [ "$message_file" != "-" ] && [ -r "$message_file" 
 $(cat "$message_file")"
 fi
 
-if ! printf '%s' "$haystack" | grep -qE '\[(meta|[A-Za-z]{1,4}[0-9])[^]]*\]'; then
+# 2026-09-09: the house ID scheme became a kind word, an optional domain
+# and a number (feat-storage-12, arch-7). Both shapes are accepted — the
+# old letter-plus-digit one stays valid because history is not rewritten.
+if ! printf '%s' "$haystack" | grep -qE '\[(meta|[A-Za-z]{1,4}[0-9]|[a-z]{3,}(-[a-z0-9]+)*-[0-9]+)[^]]*\]'; then
   {
     echo "COMMIT BLOCKED — message lacks feature/milestone IDs (standing rule 4)."
-    echo "Add the IDs this commit implements, e.g.: feat(L4b): groups [W12a-d, AR9]"
+    echo "Add the IDs this commit implements, e.g.: feat(sync): groups [feat-storage-12, arch-7]"
     echo "Pure infrastructure commits use [meta]."
   } >&2
   exit 2
