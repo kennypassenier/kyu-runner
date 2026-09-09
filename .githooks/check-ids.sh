@@ -29,10 +29,13 @@ fail=0
 # ---- 1. no new identifier in the old shape -------------------------------
 # An ID is "born" on a line that defines one: a table row or a heading that
 # starts with it. A mere mention is not a birth, so prose keeps working.
-# ID_MAP.md is excluded on purpose: it is the one file whose whole job is
-# to carry old names beside their replacements, and the first drill of
-# this gate blocked a perfectly good map for containing exactly that.
-born=$(git diff --cached --unified=0 -- '*.md' ':(exclude)*ID_MAP.md' 2>/dev/null \
+# A file whose job is to record old names is excluded from this check —
+# this convention's own ID_TRANSLATIONS.md and a project's existing
+# ID_MAP.md alike. The first drill blocked a perfectly good map for
+# containing exactly what it exists to contain, and binary-puzzle-toolkit's
+# real one then blocked every commit in that repository.
+born=$(git diff --cached --unified=0 -- '*.md' \
+  ':(exclude)*ID_TRANSLATIONS.md' ':(exclude)*ID_MAP.md' 2>/dev/null \
   | grep -E '^\+' | grep -vE '^\+\+\+' \
   | grep -oE '^\+(\| ?|#{2,4} )[A-Z]{1,4}[0-9]+[a-z]?\b' \
   | grep -oE '[A-Z]{1,4}[0-9]+[a-z]?$' | sort -u || true)
@@ -49,16 +52,28 @@ if [ -n "$born" ]; then
 fi
 
 # ---- 2. a translation is whole or refused --------------------------------
-# docs/ID_MAP.md holds one row per translated identifier: | old | new |
-map="$root/docs/ID_MAP.md"
-if [ -f "$map" ]; then
+# docs/ID_TRANSLATIONS.md holds one row per translated identifier:
+# | old | new |. Two safeguards, both paid for on 2026-09-09:
+#
+#   * The name is this convention's own. The first version read
+#     docs/ID_MAP.md, a name binary-puzzle-toolkit already used for
+#     something else — a record of which pre-merge commits carry which
+#     old numbers — and reading it as "these may no longer appear" locked
+#     that repository out of committing entirely.
+#   * The file must opt in with an exact header line, so a file that
+#     merely shares the name never activates the gate by accident.
+map="$root/docs/ID_TRANSLATIONS.md"
+if [ -f "$map" ] && ! head -3 "$map" | grep -qx '<!-- id-translations: enforced -->'; then
+  map=""
+fi
+if [ -n "$map" ] && [ -f "$map" ]; then
   while IFS= read -r old_id; do
     [ -n "$old_id" ] || continue
     # The map itself is where the old name is supposed to live.
-    if git -C "$root" grep -qE "\\b${old_id}\\b" -- '*.md' '*.rs' '*.js' '*.ts' '*.cs' '*.php' ':(exclude)*ID_MAP.md' 2>/dev/null; then
+    if git -C "$root" grep -qE "\\b${old_id}\\b" -- '*.md' '*.rs' '*.js' '*.ts' '*.cs' '*.php' ':(exclude)*ID_TRANSLATIONS.md' 2>/dev/null; then
       {
         echo "COMMIT BLOCKED — $old_id is recorded as translated but still appears:"
-        git -C "$root" grep -nE "\\b${old_id}\\b" -- '*.md' '*.rs' '*.js' '*.ts' '*.cs' '*.php' ':(exclude)*ID_MAP.md' 2>/dev/null | head -5 | sed 's/^/  /'
+        git -C "$root" grep -nE "\\b${old_id}\\b" -- '*.md' '*.rs' '*.js' '*.ts' '*.cs' '*.php' ':(exclude)*ID_TRANSLATIONS.md' 2>/dev/null | head -5 | sed 's/^/  /'
         echo "A half-finished translation leaves two names for one thing."
       } >&2
       fail=1
