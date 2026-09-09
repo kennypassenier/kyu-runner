@@ -17,9 +17,9 @@ gates hold from any session or terminal. After a fresh clone, run:
 
 | Field | Value |
 |---|---|
-| Current phase | all 11 phases done; 0.2.0 released 2026-09-06, running on CT 109; kit-sync rounds since |
-| Last completed gate | Ratification forms 1-5 (2026-08-29/30): every phase 1-8 decision signed off, architecture frozen, docs approved |
-| Next gate | The rollout, when Kenny wants it: pick the LXC, create the HA automation FIRST, then the route, then a smoke test — and measure whether HA really answers 200 to an unknown webhook id. 1.0.0 follows that |
+| Current phase | all 11 phases done; **0.2.1** released and signed 2026-09-09; adopted on CT 109 |
+| Last completed gate | Phase 10 retrospective of the chassis 1.8.0 round (2026-09-09): three standing rules and the ecosystem entry adopted into the dev procedure |
+| Next gate | The rollout, when Kenny wants it: pick the LXC, create the HA automation FIRST, then the route, then a smoke test — and measure whether HA really answers 200 to an unknown webhook id. 1.0.0 follows that. Deploying 0.2.1 itself is **Later** by decision (U1): it changes no behaviour, so it rides along with the next rollout that matters |
 | AFK mode | off |
 
 The AFK build's queue in `docs/PENDING_MINI_ROUNDS.md` is now fully
