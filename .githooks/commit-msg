@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# HOOK_VERSION=2
+# HOOK_VERSION=3
 # Traceability gate (standing rule 4): every commit message names the IDs
 # it implements, so `git log` stays a map from code to decisions.
 #
@@ -28,6 +28,13 @@ if [ -n "$root" ] && [ -x "$root/.githooks/guarded-paths.sh" ]; then
   if [ -z "$guarded" ]; then
     exit 0
   fi
+fi
+
+# The ID-scheme gate rides here rather than in pre-commit, so it travels
+# with this file through sync-hooks.sh instead of needing a per-project
+# edit. It reads the staged diff, which is already written at this point.
+if [ -n "$root" ] && [ -x "$root/.githooks/check-ids.sh" ]; then
+  "$root/.githooks/check-ids.sh" || exit 1
 fi
 
 if ! grep -qE '\[(meta|[A-Za-z]{1,4}[0-9][^]]*|[a-z]{3,}(-[a-z0-9]+)*-[0-9]+[^]]*)\]' "$msg_file"; then

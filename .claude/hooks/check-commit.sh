@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# HOOK_VERSION=2
+# HOOK_VERSION=3
 # Dev-procedure commit gate (option B): a PreToolUse hook on the Bash
 # tool. Blocks `git commit` unless (1) the project's gates pass and
 # (2) the commit message carries feature/milestone IDs in brackets.
