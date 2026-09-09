@@ -6,7 +6,7 @@ name: CI
 # shows the diff when the kit's version of this file changes.
 on:
   push:
-    branches: ["**"]
+    branches: [main]
   pull_request:
   workflow_dispatch:
 
