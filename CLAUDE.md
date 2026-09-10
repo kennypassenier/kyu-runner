@@ -17,8 +17,8 @@ gates hold from any session or terminal. After a fresh clone, run:
 
 | Field | Value |
 |---|---|
-| Current phase | all 11 phases done; **0.2.1** released and signed 2026-09-09; adopted on CT 109 |
-| Last completed gate | Phase 10 retrospective of the chassis 1.8.0 round (2026-09-09): three standing rules and the ecosystem entry adopted into the dev procedure |
+| Current phase | all 11 phases done; **0.2.2** released 2026-09-10 (static musl again); adopted on CT 109 |
+| Last completed gate | The chassis 2.0.0 round (2026-09-10): three pieces of hand-written base moved into the kit, the artifact is static musl again, and the hook/CI ownership question was decided in this project's favour |
 | Next gate | The rollout, when Kenny wants it: pick the LXC, create the HA automation FIRST, then the route, then a smoke test — and measure whether HA really answers 200 to an unknown webhook id. 1.0.0 follows that. Deploying 0.2.1 itself is **Later** by decision (U1): it changes no behaviour, so it rides along with the next rollout that matters |
 | AFK mode | off |
 
@@ -52,6 +52,15 @@ Enforced twice over: `.githooks/pre-commit` + `.githooks/commit-msg`
 `.claude/settings.json`. CI re-runs the gates on every push.
 `.claude/hooks/gates.project.sh` adds the project's own check: a test
 total quoted in README.md or docs/TEST_PLAN.md must match the suite.
+
+**CI triggers on `main` and pull requests only**, so a plain branch push
+produces no checks and `main` is reachable only through a pull request —
+including for a release. `chassis release` therefore cannot be used here
+as it stands: it pushes a `release-*` branch and waits for checks that
+never run. Releases go the pull-request way, verifying each step (rule
+36). `chassis sync` reports `ci.yml` and the two commit hooks as drift on
+purpose: the scaffold's copies are older than this repository's, and the
+kit has been asked to catch up.
 
 ## Scratch hub for development/tests
 
