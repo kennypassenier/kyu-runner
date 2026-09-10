@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.2.3] - 2026-09-10
+
 ### Changed
 
 - **chassis-rs 2.0.0 → 2.0.2** (2026-09-10). Nothing in the pump changes;
