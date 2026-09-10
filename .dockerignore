@@ -2,6 +2,6 @@
 .env
 .env.*
 target/
-target-trixie/
+target-musl/
 .git/
 .chassis.toml

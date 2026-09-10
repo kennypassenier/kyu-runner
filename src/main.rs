@@ -10,9 +10,9 @@
 use std::sync::Arc;
 
 use axum::Router;
-use chassis::{App, AppSpec, Control};
+use chassis::{App, AppSpec};
 use kyu_runner::config;
-use kyu_runner::health::{HealthState, RouteCounters, RouteSubsystem};
+use kyu_runner::health::{HealthState, RouteSubsystem};
 use kyu_runner::hub::HubClient;
 use kyu_runner::route::RouteRunner;
 use kyu_runner::webhook::WebhookClient;
@@ -44,17 +44,23 @@ async fn main() -> std::process::ExitCode {
     };
     // Only a real start and `--check` need the pump's own config (AR20);
     // `--version`, `gen-secret`, `--healthcheck`, `--print-config`, `update`
-    // and `rekey` are the kit's alone and must work without the file.
-    let Some(loaded) = app.loaded.as_ref() else {
-        return app.run().await;
-    };
-    if !matches!(app.control, None | Some(Control::Check)) {
+    // and `rekey` are the kit's alone and must work without the file. Which
+    // invocations those are is the kit's to know, not this file's.
+    if !app.needs_project_config() {
         return app.run().await;
     }
     // The pump's own config lives in the same TOML file as the kit's knobs;
-    // the kit hands the whole table over and the pump validates its part
-    // with `deny_unknown_fields` intact (kit keys stripped first).
-    let config = match config::Config::from_table(&loaded.file_table, &app.spec.knob_keys()) {
+    // the kit hands over the half that is ours, with its own keys and
+    // sections removed, and the pump validates that with
+    // `deny_unknown_fields` intact.
+    let table = match app.project_table() {
+        Ok(table) => table,
+        Err(error) => {
+            eprintln!("{error}");
+            return std::process::ExitCode::FAILURE;
+        }
+    };
+    let config = match config::Config::from_project_table(&table) {
         Ok(config) => config,
         Err(error) => {
             eprintln!("kyu-runner: {error}");
@@ -68,12 +74,16 @@ async fn main() -> std::process::ExitCode {
     });
 
     let health = Arc::new(HealthState::new(
+        &app.spec.metric_prefix(),
         config.routes.iter().map(|route| route.name.clone()),
     ));
     for route in &config.routes {
         app.subsystem(RouteSubsystem::new(&route.name, Arc::clone(&health)));
     }
-    app.metrics_source(RouteCounters(Arc::clone(&health)));
+    // Two series, each its own scrape source (feat-metrics-1); the kit
+    // renders them and appends them to its own `/metrics`.
+    app.metrics_source(health.counters().delivered());
+    app.metrics_source(health.counters().nacked());
 
     // The pump starts once the kit is listening (on_start) and stops in
     // the kit's shutdown window (on_flush): in-flight deliveries finish,

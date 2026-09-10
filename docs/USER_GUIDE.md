@@ -272,12 +272,16 @@ that used to live in this section went stale between kit versions.
 **What kyu-runner builds of the kit.** Only `core` and `self-update`.
 There is no dashboard, no login, no clients page and no theme picker:
 `/login` and `/clients` answer 404, and `/healthz` and `/metrics` are
-the whole HTTP surface. KIT.md describes the kit as a whole and labels
-each section with the feature it belongs to — the `dashboard` and
-`passkeys` sections do not apply to this binary, and neither do their
-knobs, even though `--knobs` lists them. `gen-secret` and `rekey` do
-exist on the command line, but the secrets they manage are the
-dashboard's, so this service has no use for them.
+the whole HTTP surface.
+
+Since chassis 2.0.0 nothing here has to say that twice: `chassis sync`
+reads the feature list off the dependency, KIT.md states it in its own
+first lines and leaves out the sections for features this binary does not
+carry, and `--knobs` lists only knobs this binary can act on. Until then
+this paragraph carried a hand-written demarcation that would have gone
+stale the moment the kit moved. `gen-secret` and `rekey` still exist on
+the command line — they belong to `core` — but the secrets they manage
+are the dashboard's, so this service has no use for them.
 `--check` validates the pump's config AND the kit's knobs, probes the state
 directory and exits — zero network calls, which is why it is safe as
 `ExecStartPre=` on a cold-booting LXC where the hub is not up yet.

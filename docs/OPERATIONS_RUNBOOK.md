@@ -16,10 +16,13 @@ Reality checks baked into these procedures (from the Phase 4 critic):
   `[routes.policy]` block in git is the whole policy: any tweak made
   on the hub dashboard is reverted the next time the runner starts.
   Change policies in `deploy/config.toml`, not on the dashboard.
-- **The release binary is glibc for Debian trixie since 0.2.0** (built by the
-  chassis release workflow; was static musl): it resolves names via DNS
-  only — no mDNS/Avahi. Use router-DNS names or IPs in
-  `webhook_url`, never a `.local` name.
+- **The release binary is a static musl binary again since 0.2.2** (chassis
+  2.0.0, feat-build-1; it was glibc/Debian-trixie for 0.2.0 and 0.2.1). The
+  host's libc no longer decides whether the service starts, so the same
+  artifact runs on Debian 12 and 13 alike — the glibc build needed the
+  builder's GLIBC_2.39 and would not start on Debian 12.
+- **Name resolution is DNS only** — no mDNS/Avahi, on either build shape.
+  Use router-DNS names or IPs in `webhook_url`, never a `.local` name.
 
 ## 1 · Install on the target LXC
 

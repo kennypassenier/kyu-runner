@@ -128,42 +128,28 @@ impl Hub {
 
     /// The bearer every caller of the three verbs needs since kyu 3.0.0:
     /// a *client* token, issued the way the Clients page and `chassis
-    /// clients issue` do it — `POST /api/clients` as the admin, then the
-    /// reveal. Before 3.0.0 a hub without `KYU_TOKEN` had no door at all
-    /// and the suite published anonymously; that state no longer exists
-    /// (measured 2026-09-09: publishing without a bearer answers 401).
+    /// clients issue` do it. Before 3.0.0 a hub without `KYU_TOKEN` had no
+    /// door at all and the suite published anonymously; that state no
+    /// longer exists (measured 2026-09-09: publishing without a bearer
+    /// answers 401).
+    ///
+    /// The issue-and-reveal pair was thirty hand-written lines here until
+    /// chassis 2.0.0 gave `AdminApi` — the clients API of *another* kit
+    /// service, which is exactly this case: the hub is a chassis service
+    /// and this is a headless caller of it.
     async fn mint_client_token(&mut self) {
-        let client = reqwest::Client::new();
-        let admin = self.admin_token().to_string();
-        let created = client
-            .post(format!("{}/api/clients", self.base()))
-            .bearer_auth(&admin)
-            .json(&serde_json::json!({ "name": "kyu-runner-suite" }))
-            .send()
+        let api = chassis::admin::AdminApi::new(&self.base(), self.admin_token())
+            .expect("build the hub's admin API client");
+        let issued = api
+            .issue_client("kyu-runner-suite", &[])
             .await
-            .expect("issue a client token on the hub");
-        assert_eq!(
-            created.status().as_u16(),
-            201,
-            "the hub refused to issue a client token. Its stderr said: {}",
-            self.stderr()
-        );
-        let view: serde_json::Value = created.json().await.expect("the issued client as JSON");
-        let id = view["id"].as_str().expect("the issued client has an id");
-        let revealed: serde_json::Value = client
-            .get(format!("{}/api/clients/{id}/token", self.base()))
-            .bearer_auth(&admin)
-            .send()
-            .await
-            .expect("reveal the client token")
-            .json()
-            .await
-            .expect("the reveal as JSON");
-        let token = revealed["token"]
-            .as_str()
-            .expect("the reveal carries a token")
-            .to_string();
-        self.client_token = Some(token);
+            .unwrap_or_else(|e| {
+                panic!(
+                    "the hub refused to issue a client token: {e}. Its stderr said: {}",
+                    self.stderr()
+                )
+            });
+        self.client_token = Some(issued.token);
     }
 
     /// The admin token the hub is started with: the operator's secret,
