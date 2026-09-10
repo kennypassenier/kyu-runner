@@ -1,44 +1,43 @@
-//! W4/AR10 + W6: what the pump reports about itself. Since the chassis
-//! migration the kit serves `/healthz` and `/metrics`; this module keeps
-//! the per-route state and counters and hands them to the kit as one
-//! `Subsystem` per route and one `ScrapeSource` (metric names unchanged:
-//! `kyu_runner_delivered_total`, `kyu_runner_nacked_total`). Never
-//! payloads, never the token. Route names are K8-restricted to
-//! `[A-Za-z0-9._-]`, so the metric labels cannot need escaping.
+//! W4/AR10 + W6: what the pump reports about itself. The kit serves
+//! `/healthz` and `/metrics`; this module keeps the per-route state and
+//! hands the kit one `Subsystem` per route, and since chassis 2.0.0 it
+//! counts into the kit's own `Counter` type instead of formatting
+//! Prometheus text itself. Metric names are unchanged and are a contract
+//! with the monitoring: `kyu_runner_delivered_total`,
+//! `kyu_runner_nacked_total`. Never payloads, never the token.
 
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 
-use chassis::{ScrapeSource, Subsystem, SubsystemStatus};
+use chassis::{Counter, Subsystem, SubsystemStatus};
 
 struct RouteSlot {
     state: &'static str,
-    delivered: u64,
-    nacked: u64,
 }
 
 pub struct HealthState {
     routes: Mutex<BTreeMap<String, RouteSlot>>,
+    counters: RouteCounters,
 }
 
 impl HealthState {
-    pub fn new(names: impl Iterator<Item = String>) -> Self {
+    /// `prefix` is the kit's metric prefix (`AppSpec::metric_prefix()`).
+    pub fn new(prefix: &str, names: impl Iterator<Item = String>) -> Self {
+        let names: Vec<String> = names.collect();
         Self {
             routes: Mutex::new(
                 names
-                    .map(|name| {
-                        (
-                            name,
-                            RouteSlot {
-                                state: "starting",
-                                delivered: 0,
-                                nacked: 0,
-                            },
-                        )
-                    })
+                    .iter()
+                    .map(|name| (name.clone(), RouteSlot { state: "starting" }))
                     .collect(),
             ),
+            counters: RouteCounters::new(prefix, names.into_iter()),
         }
+    }
+
+    /// The two series to register with `App::metrics_source`.
+    pub fn counters(&self) -> &RouteCounters {
+        &self.counters
     }
 
     pub fn set(&self, route: &str, state: &'static str) {
@@ -49,16 +48,12 @@ impl HealthState {
 
     /// W6: a message reached the webhook (2xx) and was settled.
     pub fn count_delivered(&self, route: &str) {
-        if let Some(slot) = self.routes.lock().expect("health lock").get_mut(route) {
-            slot.delivered += 1;
-        }
+        self.counters.delivered.inc(&[("route", route)]);
     }
 
     /// W6: a delivery was handed back to the hub (any nack).
     pub fn count_nacked(&self, route: &str) {
-        if let Some(slot) = self.routes.lock().expect("health lock").get_mut(route) {
-            slot.nacked += 1;
-        }
+        self.counters.nacked.inc(&[("route", route)]);
     }
 
     /// The loop state the pump last reported for `route`.
@@ -79,31 +74,51 @@ impl HealthState {
             .collect();
         format!("{{\"status\":\"ok\",\"routes\":[{}]}}", items.join(","))
     }
+}
 
-    /// W6: Prometheus text format, counters only.
-    pub fn render_metrics(&self) -> String {
-        let routes = self.routes.lock().expect("health lock");
-        let mut out = String::from(
-            "# HELP kyu_runner_delivered_total Messages delivered to the webhook and settled.\n\
-             # TYPE kyu_runner_delivered_total counter\n",
-        );
-        for (name, slot) in routes.iter() {
-            out.push_str(&format!(
-                "kyu_runner_delivered_total{{route=\"{name}\"}} {}\n",
-                slot.delivered
-            ));
+/// The W6 counters, formatted by the kit (feat-metrics-1) instead of by
+/// hand: label values are escaped and the HELP/TYPE/sample order is the
+/// kit's problem, so a route name can no longer invalidate the scrape —
+/// which would take the kit's own metrics down with it.
+///
+/// Both series are created at 0 for every configured route at startup. A
+/// counter otherwise appears only once it is first incremented, and a
+/// route that has delivered nothing would be missing from `/metrics`
+/// rather than sitting at zero — a difference the monitoring reads as
+/// "gone", not as "idle".
+#[derive(Clone)]
+pub struct RouteCounters {
+    delivered: Counter,
+    nacked: Counter,
+}
+
+impl RouteCounters {
+    pub fn new(prefix: &str, routes: impl Iterator<Item = String>) -> Self {
+        let counters = Self {
+            delivered: Counter::new(
+                prefix,
+                "delivered_total",
+                "Messages delivered to the webhook and settled.",
+            ),
+            nacked: Counter::new(
+                prefix,
+                "nacked_total",
+                "Deliveries handed back to the hub (nacked).",
+            ),
+        };
+        for route in routes {
+            counters.delivered.add(&[("route", &route)], 0);
+            counters.nacked.add(&[("route", &route)], 0);
         }
-        out.push_str(
-            "# HELP kyu_runner_nacked_total Deliveries handed back to the hub (nacked).\n\
-             # TYPE kyu_runner_nacked_total counter\n",
-        );
-        for (name, slot) in routes.iter() {
-            out.push_str(&format!(
-                "kyu_runner_nacked_total{{route=\"{name}\"}} {}\n",
-                slot.nacked
-            ));
-        }
-        out
+        counters
+    }
+
+    pub fn delivered(&self) -> Counter {
+        self.delivered.clone()
+    }
+
+    pub fn nacked(&self) -> Counter {
+        self.nacked.clone()
     }
 }
 
@@ -135,14 +150,5 @@ impl Subsystem for RouteSubsystem {
             "hub-down" | "auth-denied" | "circuit-open" => SubsystemStatus::failing(state),
             other => SubsystemStatus::ok(other),
         }
-    }
-}
-
-/// The W6 counters, appended verbatim to the kit's `/metrics`.
-pub struct RouteCounters(pub Arc<HealthState>);
-
-impl ScrapeSource for RouteCounters {
-    fn scrape(&self) -> String {
-        self.0.render_metrics()
     }
 }

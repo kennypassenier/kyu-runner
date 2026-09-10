@@ -2,6 +2,34 @@
 
 ## [Unreleased]
 
+### Changed
+
+- **chassis-rs 1.8.0 → 2.0.0** (2026-09-10). A major for the kit, but
+  nothing kyu-runner does breaks: the type that changed (`Client`) is one
+  this project never constructs, and the build was green before a line was
+  touched. Three things the kit added *because of* this project's 1.8.0
+  report are now adopted, all behaviour-neutral:
+  - `App::project_config`/`project_table` replaces the hand-written strip
+    of the shared config file. The line it needed for the kit's own
+    `[[notify.webhook]]` tables rested on knowledge nothing documented and
+    would have started refusing valid configs the day the kit grew a
+    second section of its own.
+  - `Counter` replaces the hand-formatted Prometheus text. Metric names are
+    unchanged — `kyu_runner_delivered_total`, `kyu_runner_nacked_total`,
+    labelled by route — and both series are still created at 0 for every
+    configured route, so a route that has delivered nothing reads as idle
+    rather than missing.
+  - `chassis::admin::AdminApi` replaces the thirty lines the E2E harness
+    wrote to issue and reveal a client token on a real kyu hub.
+- **The release artifact is a static musl binary again** (chassis 2.0.0,
+  feat-build-1; it was glibc for Debian trixie in 0.2.0 and 0.2.1). The
+  host's libc no longer decides whether the service starts, so one artifact
+  runs on Debian 12 and 13 alike. The runbook said the opposite and now
+  says this.
+- **`--knobs` and `docs/KIT.md` describe only the features this binary
+  builds.** The hand-written demarcation paragraph in the user guide,
+  written in the 1.8.0 round precisely because they did not, is gone.
+
 ## [0.2.1] - 2026-09-09
 
 ### Changed

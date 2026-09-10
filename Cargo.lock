@@ -281,8 +281,8 @@ dependencies = [
 
 [[package]]
 name = "chassis"
-version = "1.8.0"
-source = "git+https://github.com/kennypassenier/chassis-rs?tag=v1.8.0#b067f651ab33a6a471863bc3988d25a7b232dc8c"
+version = "2.0.0"
+source = "git+https://github.com/kennypassenier/chassis-rs?tag=v2.0.0#11908762eeee40f3800368c994b23be74a7d1d7b"
 dependencies = [
  "axum",
  "axum-extra",
@@ -1019,7 +1019,6 @@ dependencies = [
  "chassis",
  "reqwest",
  "serde",
- "serde_json",
  "tempfile",
  "thiserror",
  "tokio",

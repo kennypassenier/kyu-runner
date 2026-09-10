@@ -8,7 +8,9 @@ services:
     restart: unless-stopped
     ports:
       - "8080:8080"
-    env_file: /etc/kyu-runner/kyu-runner.env   # KYU_RUNNER_TOKEN, KYU_RUNNER_SECRET_KEY, KYU_RUNNER_PUBLIC_URL
+    # KYU_RUNNER_PUBLIC_URL is not in this list: it is a passkeys knob, and
+    # the scaffold builds without that feature (feat-build-1).
+    env_file: /etc/kyu-runner/kyu-runner.env   # KYU_RUNNER_TOKEN, KYU_RUNNER_SECRET_KEY
     volumes:
       - kyu-runner-state:/var/lib/kyu-runner    # a named volume inherits the image's owner
     logging:

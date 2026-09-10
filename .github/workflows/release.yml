@@ -1,9 +1,14 @@
 name: Release
 
-# On a `v*` tag: build the glibc binary in the same Debian the services run
-# on (T8), write SHA256SUMS, push the container image to GHCR, and create
-# the GitHub release with the binary and the manifest. Everything here
-# runs with the workflow's own GITHUB_TOKEN — no personal token anywhere.
+# On a `v*` tag: build the static musl binary (feat-build-1), prove it has
+# no dynamic links, write SHA256SUMS, push the container image to GHCR, and
+# create the GitHub release with the binary and the manifest. Everything
+# here runs with the workflow's own GITHUB_TOKEN — no personal token
+# anywhere.
+#
+# The binary is static so the host's glibc stops deciding whether the
+# service starts: a glibc build needs the builder's GLIBC_2.39 and dies on
+# Debian 12, which blocked three rollouts on 2026-09-09.
 #
 # The signature (`SHA256SUMS.minisig`) and `VERSION` are NOT made here: the
 # signing key stays on Kenny's machine, and `chassis release <version>`
@@ -33,13 +38,32 @@ jobs:
           if [ "$tag" != "$cargo_version" ]; then
             echo "tag v$tag but Cargo.toml says $cargo_version. What now: bump Cargo.toml (chassis release does this) and re-tag."; exit 1
           fi
-      - name: Build the release binary for Debian trixie (glibc)
+      - name: Build the static release binary (x86_64-unknown-linux-musl)
+        # musl-tools brings the musl C compiler `ring` (rustls' crypto)
+        # needs for this target. The target itself comes from
+        # rust-toolchain.toml, which the mounted checkout puts in scope
+        # before cargo runs; `rustup target add` on its own line would
+        # install it against another toolchain instance (kyu, 2026-09-09).
         run: |
-          docker run --rm -v "$PWD":/w -w /w -e CARGO_TARGET_DIR=/w/target-trixie -e CARGO_HOME=/w/target-trixie/cargo-home rust:1.97-slim-trixie \
-            sh -c 'apt-get update -qq >/dev/null && apt-get install -y -qq pkg-config libssl-dev >/dev/null && cargo build --release --locked'
+          docker run --rm -v "$PWD":/w -w /w -e CARGO_TARGET_DIR=/w/target-musl -e CARGO_HOME=/w/target-musl/cargo-home rust:1.97-slim-trixie \
+            sh -c 'apt-get update -qq >/dev/null && apt-get install -y -qq musl-tools >/dev/null && cargo build --release --locked --target x86_64-unknown-linux-musl'
           mkdir -p dist
-          cp target-trixie/release/kyu-runner dist/kyu-runner
+          cp target-musl/x86_64-unknown-linux-musl/release/kyu-runner dist/kyu-runner
           (cd dist && sha256sum kyu-runner > SHA256SUMS && cat SHA256SUMS)
+      - name: The released binary has no dynamic links
+        # `ldd` is not a yes/no oracle: on a static binary it either exits
+        # non-zero or prints "not a dynamic executable"/"statically
+        # linked", so neither its exit code nor the presence of output can
+        # be the signal. A resolved shared library is what we refuse, and
+        # that is exactly what a `=>` line is. `|| true` keeps the step
+        # from passing or failing on ldd's exit code by accident; the grep
+        # below is the whole verdict.
+        run: |
+          links=$(ldd dist/kyu-runner 2>&1 || true)
+          echo "$links"
+          if printf '%s\n' "$links" | grep -q '=>'; then
+            echo "dist/kyu-runner links shared libraries and would not start on a host with an older glibc. What now: check the build used --target x86_64-unknown-linux-musl, and that no enabled feature needs OpenSSL (`passkeys` does)."; exit 1
+          fi
       - name: Log in to GHCR
         uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
         with:
@@ -63,3 +87,8 @@ jobs:
           body: |
             Built from `${{ github.sha }}`. The signature (`SHA256SUMS.minisig`) and `VERSION`
             are added by `chassis release`; until they are, the self-updater ignores this release.
+
+            **Linkage: statically linked (x86_64-unknown-linux-musl).** This binary needs no
+            glibc and runs on any x86_64 Linux; a deploy that checks what a staged binary
+            requires will find no dynamic dependency at all. A step in this workflow refuses
+            to publish a binary with one.

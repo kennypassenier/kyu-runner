@@ -304,8 +304,8 @@ pub struct Route {
 }
 
 impl Config {
-    pub fn from_table(table: &toml::Table, kit_keys: &[&str]) -> Result<Config, ConfigError> {
-        from_table(table, kit_keys)
+    pub fn from_project_table(table: &toml::Table) -> Result<Config, ConfigError> {
+        from_project_table(table)
     }
 
     pub fn webhook_timeout(&self, route: &Route) -> Duration {
@@ -545,17 +545,20 @@ impl Route {
     }
 }
 
-/// Build the pump's config from the TOML table the kit already read: the
-/// kit's own knob keys (and its `[[notify.webhook]]` tables) are stripped
-/// first, so `deny_unknown_fields` keeps refusing typos in OUR keys while
-/// the two configurations share one file.
-pub fn from_table(table: &toml::Table, kit_keys: &[&str]) -> Result<Config, ConfigError> {
-    let mut own = table.clone();
-    for key in kit_keys {
-        own.remove(*key);
-    }
-    own.remove("notify");
-    let mut config: Config = toml::Value::Table(own).try_into().map_err(Box::new)?;
+/// Build the pump's config from the project's own half of the shared
+/// config file, so `deny_unknown_fields` keeps refusing typos in OUR keys
+/// while the two configurations live in one file.
+///
+/// The kit strips its own half since chassis 2.0.0 (`App::project_table`,
+/// feat-config-1). Before that this function did it here, and the line it
+/// needed for the kit's `[[notify.webhook]]` tables — `own.remove("notify")`
+/// — rested on knowledge nothing documented: it would have gone on
+/// compiling and started refusing valid configs the day the kit grew a
+/// second section of its own.
+pub fn from_project_table(table: &toml::Table) -> Result<Config, ConfigError> {
+    let mut config: Config = toml::Value::Table(table.clone())
+        .try_into()
+        .map_err(Box::new)?;
     config.validate()?;
     Ok(config)
 }

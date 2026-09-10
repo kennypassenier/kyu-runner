@@ -53,9 +53,11 @@ it broke the moment the local kyu binary was rebuilt to 3.0.0 mid-run
 
 What changed here: the harness now starts every hub with an admin token,
 then issues itself a **client token** the way the Clients page and
-`chassis clients issue` do — `POST /api/clients`, then
-`GET /api/clients/{id}/token` — and sends it as the bearer on the three
-verbs. The runner under test gets the same token; `/api/…` management
+`chassis clients issue` do, and sends it as the bearer on the three verbs.
+That issue-and-reveal pair was thirty hand-written lines until chassis
+2.0.0, which added `chassis::admin::AdminApi` for exactly this case — a
+headless caller driving another kit service's clients API — and the
+harness now uses it. The runner under test gets the same token; `/api/…` management
 calls use the admin token. The docker fallback moved from the pinned
 2.0.0 image to the pinned **v3.0.0** image
 (`sha256:d87d692c…`), so CI no longer proves the pump against a hub two
@@ -95,10 +97,13 @@ carry the hardest promises. The kit does not ask for it either: its
 MIGRATION.md lists kyu-runner under headless token management, and the
 harness advice under projects that have a dashboard.
 
-What genuinely overlaps is small: the thirty lines that issue and reveal a
-client token mirror what `chassis clients issue` does. Left as code for
-now — a suite that shells out to a separately installed binary trades a
-dependency this project has deliberately avoided for no behaviour gained.
+What genuinely overlapped was small and is now gone: the thirty lines that
+issued and revealed a client token mirrored what `chassis clients issue`
+does, and chassis 2.0.0 made that a library call (`AdminApi`, part of
+`core`, so a headless service reaches it without compiling a dashboard).
+Shelling out to the `chassis` binary was the alternative and was rejected:
+a suite that needs a separately installed program trades a dependency this
+project deliberately avoided for no behaviour gained.
 
 ## Harness defects found and fixed
 
