@@ -4,9 +4,18 @@ name: CI
 # these checks, and a branch push that produced no checks could never be
 # merged without a pull request. Written by `chassis new`; `chassis sync`
 # shows the diff when the kit's version of this file changes.
+#
+# The trigger was narrowed to `main` on 2026-09-09 and restored here on
+# 2026-09-10, the same way chassis-rs restored its own. Measured while it
+# was narrow: a push to branch `kit-2.0.0` produced zero runs with event
+# `push`, a direct push to main was refused by branch protection, and
+# `chassis release` hung waiting for checks of a `release-*` branch that
+# CI never looked at — so 0.2.2 was released by hand through two pull
+# requests. What that change was really after — one CI job instead of
+# four — stays in place: `gates` below is the only one.
 on:
   push:
-    branches: [main]
+    branches: ["**"]
   pull_request:
   workflow_dispatch:
 
