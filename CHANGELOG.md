@@ -2,6 +2,20 @@
 
 ## [Unreleased]
 
+### Changed
+
+- **chassis-rs 2.0.0 → 2.0.2** (2026-09-10). Nothing in the pump changes;
+  what changes is that two pieces of friction this project reported are
+  gone. `chassis sync` no longer rewrites `.githooks/commit-msg`,
+  `.githooks/check-ids.sh` or `.claude/hooks/check-commit.sh` — measured
+  here: those three no longer appear in its output at all, where on 2.0.0
+  they were diffs that had to be restored by hand after every `--write`.
+  And `chassis sync --protect` no longer turns `enforce_admins` back on,
+  which is what made turning it off stick.
+- **`.githooks/check-ids.sh` carries the canonical version.** An ID that
+  already exists in the previous commit no longer counts as newly born, so
+  editing one status cell in an old table does not force a rename.
+
 ## [0.2.2] - 2026-09-10
 
 ### Changed

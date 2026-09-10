@@ -53,14 +53,14 @@ Enforced twice over: `.githooks/pre-commit` + `.githooks/commit-msg`
 `.claude/hooks/gates.project.sh` adds the project's own check: a test
 total quoted in README.md or docs/TEST_PLAN.md must match the suite.
 
-**CI triggers on `main` and pull requests only**, so a plain branch push
-produces no checks and `main` is reachable only through a pull request —
-including for a release. `chassis release` therefore cannot be used here
-as it stands: it pushes a `release-*` branch and waits for checks that
-never run. Releases go the pull-request way, verifying each step (rule
-36). `chassis sync` reports `ci.yml` and the two commit hooks as drift on
-purpose: the scaffold's copies are older than this repository's, and the
-kit has been asked to catch up.
+**CI runs on every branch** (restored 2026-09-10), so a branch push
+produces the check branch protection waits for and `main` is reachable by
+fast-forward again. `gates` is the only job, which is what narrowing the
+trigger was really after. `chassis sync` still reports
+`.github/workflows/ci.yml` as drift and should: the scaffold carries three
+jobs more (`deny`, `image`, `coverage`) that this project deliberately does
+not run. The three shared hooks are no longer sync's business since kit
+2.0.2 — dev-procedure owns them.
 
 ## Scratch hub for development/tests
 

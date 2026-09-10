@@ -39,6 +39,21 @@ born=$(git diff --cached --unified=0 -- '*.md' \
   | grep -E '^\+' | grep -vE '^\+\+\+' \
   | grep -oE '^\+(\| ?|#{2,4} )[A-Z]{1,4}[0-9]+[a-z]?\b' \
   | grep -oE '[A-Z]{1,4}[0-9]+[a-z]?$' | sort -u || true)
+
+# An ID that already exists in the previous commit is not being born; the
+# row is only being edited. Git reports a changed line as an added one, so
+# without this, turning "open" into "closed" on a years-old row forces a
+# rename in the middle of unrelated work -- measured twice on 2026-09-10
+# in kp-themes, on `HA3` and on `KT16-M1`, both of them a status change
+# and nothing else. The comment above promised "existing tables stay
+# exactly as they are"; this is what makes that true.
+if [ -n "$born" ]; then
+  fresh=""
+  for id in $born; do
+    git -C "$root" grep -qE "\\b${id}\\b" HEAD -- '*.md' 2>/dev/null || fresh="$fresh $id"
+  done
+  born=$(printf '%s\n' $fresh | sed '/^$/d' | sort -u)
+fi
 if [ -n "$born" ]; then
   {
     echo "COMMIT BLOCKED — a new identifier is being created in the old shape:"

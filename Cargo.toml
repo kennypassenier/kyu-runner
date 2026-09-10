@@ -14,7 +14,7 @@ publish = false
 [dependencies]
 # The shared foundation (chassis-rs): configuration, logging, health,
 # metrics, shutdown, self-update. Pinned to a tag, like every consumer.
-chassis = { version = "2.0.0", git = "https://github.com/kennypassenier/chassis-rs", tag = "v2.0.0", default-features = false, features = ["core", "self-update"] }
+chassis = { version = "2.0.2", git = "https://github.com/kennypassenier/chassis-rs", tag = "v2.0.2", default-features = false, features = ["core", "self-update"] }
 axum = { version = "0.8", default-features = false, features = ["http1", "tokio"] }  # the Router type the kit takes
 anyhow = "1"                                                    # error context inside the hub/webhook clients (T6)
 reqwest = { version = "0.12", default-features = false }        # HTTP client, no TLS: LAN plain HTTP only (T3, AR11)
@@ -27,4 +27,4 @@ tracing = "0.1"                                                 # structured eve
 [dev-dependencies]
 reqwest = { version = "0.12", default-features = false }        # test-side HTTP against the real hub (SR9)
 tempfile = "3"                                                  # scratch-hub data dirs in E2E (SR9)
-chassis = { version = "2.0.0", git = "https://github.com/kennypassenier/chassis-rs", tag = "v2.0.0", default-features = false, features = ["core"] }  # AdminApi: issue a hub client token in the E2E harness
+chassis = { version = "2.0.2", git = "https://github.com/kennypassenier/chassis-rs", tag = "v2.0.2", default-features = false, features = ["core"] }  # AdminApi: issue a hub client token in the E2E harness
