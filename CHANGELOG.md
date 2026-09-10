@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-09-10
+
 ### Changed
 
 - **chassis-rs 1.8.0 → 2.0.0** (2026-09-10). A major for the kit, but
