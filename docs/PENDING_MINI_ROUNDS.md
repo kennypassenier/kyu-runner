@@ -32,3 +32,22 @@ every other decision is provisional-by-design and queued above.
 **Phase 9/10 are deliberately NOT started:** "Tag & release?" is
 always Kenny's explicit go (procedure), the GitHub remote is Q8, and
 the retrospective is a two-way form.
+
+## Open measurement (correction `tool-help`, 2026-09-10)
+
+Kenny signed off the correction for proposing to build what `chassis
+upgrade` already did. The loop stays open here until the measurement has
+actually happened, per the correction-form rule.
+
+**What is measured:** the next kit bump of this project is done with
+`chassis upgrade <version>` — which aligns `chassis_tag`, the dependency
+and the dev-dependency, updates the lock and runs this project's gates —
+or Claude writes in that same commit why it was not.
+
+**Where it came from:** three bumps were done by hand across five strings.
+One of them predates the command; two did not. The cause was not the kit's
+output but that `chassis --help` was never re-read after the kit went to a
+major.
+
+**Fallback if it fails again:** the command moves into the bump procedure
+in `CLAUDE.md`, so it no longer depends on anyone remembering it.
