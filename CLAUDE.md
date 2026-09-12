@@ -20,6 +20,7 @@ gates hold from any session or terminal. After a fresh clone, run:
 | Current phase | all 11 phases done; **0.2.3** released 2026-09-10 on chassis 2.0.2; adopted on CT 109. Deployed there is still an older build — a rollout is the homelab's step |
 | Last completed gate | The chassis 2.0.2 round (2026-09-10): the bump was a dependency change and nothing else, and `chassis release` ran the whole chain itself for the first time since the CI trigger was restored |
 | Next gate | The rollout, when Kenny wants it: pick the LXC, create the HA automation FIRST, then the route, then a smoke test — and measure whether HA really answers 200 to an unknown webhook id. 1.0.0 follows that. Deploying 0.2.1 itself is **Later** by decision (U1): it changes no behaviour, so it rides along with the next rollout that matters |
+| Next action | waiting on Kenny: nothing in progress here |
 | AFK mode | off |
 
 The AFK build's queue in `docs/PENDING_MINI_ROUNDS.md` is now fully
