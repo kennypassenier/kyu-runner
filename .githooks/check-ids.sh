@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# HOOK_VERSION=3
+# HOOK_VERSION=4
 # The ID-scheme gate (standing rule 4, policy set 2026-09-09).
 #
 # The large rename was cancelled after measuring what it would cost: an ID

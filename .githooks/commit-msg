@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# HOOK_VERSION=3
+# HOOK_VERSION=4
 # Traceability gate (standing rule 4): every commit message names the IDs
 # it implements, so `git log` stays a map from code to decisions.
 #

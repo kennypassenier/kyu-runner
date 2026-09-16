@@ -23,10 +23,20 @@ gate_tree_fingerprint() {
   { git status --porcelain; git diff; } | sha256sum | cut -d' ' -f1
 }
 gate_tree_before=$(gate_tree_fingerprint)
+# Kenny, 2026-09-16, standing rule 49 (commit-floor and rust-suite):
+# format and lint always run, and the suite is skipped when no Rust
+# source moved. Measured across sixteen projects: 41% of commits touch
+# only documentation or configuration and paid for the suite anyway. Per
+# crate was measured and rejected — `cargo test -p <crate>` is not faster
+# than the whole workspace, because cargo runs every test binary either
+# way.
+. "$(git rev-parse --show-toplevel)/.githooks/gate-cache.sh"
+
 
 cargo fmt --all -- --check
 cargo clippy --all-targets -- -D warnings
-cargo test
+gate_glob suite '*.rs' 'Cargo.toml' 'Cargo.lock' '*/Cargo.toml' -- \
+  cargo test
 
 # Project-owned gates (chassis 1.6.0, M1): a project keeps its own checks
 # in .claude/hooks/gates.project.sh — a module-boundary grep, a version
@@ -35,6 +45,8 @@ cargo test
 if [ -x .claude/hooks/gates.project.sh ]; then
   .claude/hooks/gates.project.sh
 fi
+
+gate_cache_done
 
 if [ "$(gate_tree_fingerprint)" != "$gate_tree_before" ]; then
   {
