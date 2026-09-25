@@ -45,4 +45,20 @@ if [ "$table_sum" != "$real" ]; then
   fail=1
 fi
 
-exit "$fail"
+[ "$fail" = 0 ] || exit "$fail"
+
+# C · cargo-deny at the release tier (Kenny, 2026-09-25). CI runs one job
+# (gates), and the kit's gates.sh says "cargo-deny runs in CI only", so
+# until this block it ran nowhere. Like http-switchboard, the release commit
+# is the one that moves the package version: only that commit pays for it.
+version=$(grep -m1 '^version' Cargo.toml | sed -E 's/.*"(.*)".*/\1/')
+if [ -n "$version" ] && ! git rev-parse -q --verify "refs/tags/v$version" >/dev/null 2>&1 \
+   && git diff --cached --unified=0 -- Cargo.toml 2>/dev/null | grep -qE '^\+version = '; then
+  echo "gates.project: release tier (version $version): cargo-deny"
+  if ! cargo deny --version >/dev/null 2>&1; then
+    echo "gate: the release commit runs cargo-deny, and it is not installed." >&2
+    echo "      What now: cargo install cargo-deny --locked, then commit again." >&2
+    exit 1
+  fi
+  cargo deny check all
+fi

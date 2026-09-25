@@ -14,5 +14,8 @@ kp_themes = "5.1.0"
 state_dir = "/appdata/kyu/kyu-runner-config"
 env_file = "/appdata/kyu/kyu-runner-config/token.env"
 latch = false
+# CI runs one job on purpose (ci.yml); cargo-deny runs at the release tier
+# of .claude/hooks/gates.project.sh and the image is built by release.yml.
+required_checks = ["fmt · clippy · tests"]
 # Adopted by the homelab as stack kyu-runner on CT 109 (2026-08-31).
 vmid = 109
