@@ -17,10 +17,10 @@ gates hold from any session or terminal. After a fresh clone, run:
 
 | Field | Value |
 |---|---|
-| Current phase | all 11 phases done; **0.2.3** released 2026-09-10 on chassis 2.0.2 and running on CT 109 (measured 2026-09-26: `/healthz` on 10.10.10.9:8082 answers `0.2.3`, all four subsystems ok). A stray `/usr/local/bin/kyu-runner` 0.1.0 on CT 109 is not what the unit runs |
-| Last completed gate | The chassis 2.0.2 round (2026-09-10): the bump was a dependency change and nothing else, and `chassis release` ran the whole chain itself for the first time since the CI trigger was restored |
-| Next gate | Release 1.0.0, on Kenny's go. Its condition ("1.0.0 follows the first rollout that measures real HA") is met: measured 2026-09-26, the runner on CT 109 has delivered 306 `homelab-ops` and 13 `kyu-events` messages to the real HA (10.10.10.2) with 0 nacks, and HA answers 200 to an unknown webhook id (Q9) |
-| Next action | waiting on Kenny: the decision form of 2026-09-26 (release 1.0.0; the stray 0.1.0 binary on CT 109). The kit is on chassis 2.1.0 since 2026-09-26, bumped with `chassis upgrade`, which closed the `tool-help` measurement |
+| Current phase | all 11 phases done; **1.0.0** released 2026-09-26 on chassis 2.1.0 and running on CT 109 (read back: `/healthz` answers `1.0.0`, all five routes idle, `NRestarts=0`). `/usr/local/bin/kyu-runner` on CT 109 is now a symlink to `/opt/kyu-runner/bin/kyu-runner`; 0.2.3 is kept as `kyu-runner.prev` |
+| Last completed gate | Kenny's form of 2026-09-26: `release` = release and roll out, `stray` = replace the old 0.1.0 with a link. Both done the same evening |
+| Next gate | None open. The v1.0.0 release is **unsigned**: `chassis release` stopped at `scripts/sign-release.sh v1.0.0` because the minisign key is only on Garuda. Self-update is off on CT 109 (`update_mode` off), so nothing waits on the signature to run |
+| Next action | Sign v1.0.0 once the minisign key reaches WSL through the secrets sync (the workstation task in GARUDA.md): `scripts/sign-release.sh v1.0.0`, which uploads the `.minisig` and then `VERSION`. Claude does that; no Kenny step beyond the key move |
 | AFK mode | off |
 
 The AFK build's queue in `docs/PENDING_MINI_ROUNDS.md` is now fully
