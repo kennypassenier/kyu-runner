@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-09-26
+
 **1.0.0 is a promise, not a code change.** The condition set at the
 retrospective was that 1.0.0 follows the first rollout against the real
 Home Assistant. Measured 2026-09-26 on CT 109: 306 `homelab-ops` and 13
