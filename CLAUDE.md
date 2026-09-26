@@ -19,15 +19,15 @@ gates hold from any session or terminal. After a fresh clone, run:
 |---|---|
 | Current phase | all 11 phases done; **0.2.3** released 2026-09-10 on chassis 2.0.2 and running on CT 109 (measured 2026-09-26: `/healthz` on 10.10.10.9:8082 answers `0.2.3`, all four subsystems ok). A stray `/usr/local/bin/kyu-runner` 0.1.0 on CT 109 is not what the unit runs |
 | Last completed gate | The chassis 2.0.2 round (2026-09-10): the bump was a dependency change and nothing else, and `chassis release` ran the whole chain itself for the first time since the CI trigger was restored |
-| Next gate | The rollout, when Kenny wants it: pick the LXC, create the HA automation FIRST, then the route, then a smoke test — and measure whether HA really answers 200 to an unknown webhook id. 1.0.0 follows that. Deploying 0.2.1 itself is **Later** by decision (U1): it changes no behaviour, so it rides along with the next rollout that matters |
-| Next action | waiting on Kenny: the decision form of 2026-09-26 (rollout against the real HA + 1.0.0, scratch LXC 191, the stray 0.1.0 binary). The `tool-help` measurement waits on the next chassis release (latest tag still v2.0.2, checked 2026-09-26) |
+| Next gate | Release 1.0.0, on Kenny's go. Its condition ("1.0.0 follows the first rollout that measures real HA") is met: measured 2026-09-26, the runner on CT 109 has delivered 306 `homelab-ops` and 13 `kyu-events` messages to the real HA (10.10.10.2) with 0 nacks, and HA answers 200 to an unknown webhook id (Q9) |
+| Next action | waiting on Kenny: the decision form of 2026-09-26 (release 1.0.0; the stray 0.1.0 binary on CT 109). The `tool-help` measurement waits on the next chassis release (latest tag still v2.0.2, checked 2026-09-26) |
 | AFK mode | off |
 
 The AFK build's queue in `docs/PENDING_MINI_ROUNDS.md` is now fully
 answered — it stays as the record of what was decided when. The real
-hub on LXC 109 is still only touched as an agreed step (scope R1); the
-scratch container for drills is LXC 191 on the Proxmox host, kept until
-the rollout at Kenny's request.
+hub on LXC 109 is still only touched as an agreed step (scope R1). The
+scratch drill container LXC 191 no longer exists: `pct list` on pve and
+the standalone Proxmox showed no 191 on 2026-09-26.
 
 ## Project documents
 
