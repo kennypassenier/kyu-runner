@@ -17,10 +17,10 @@ gates hold from any session or terminal. After a fresh clone, run:
 
 | Field | Value |
 |---|---|
-| Current phase | all 11 phases done; **0.2.3** released 2026-09-10 on chassis 2.0.2; adopted on CT 109. Deployed there is still an older build — a rollout is the homelab's step |
+| Current phase | all 11 phases done; **0.2.3** released 2026-09-10 on chassis 2.0.2 and running on CT 109 (measured 2026-09-26: `/healthz` on 10.10.10.9:8082 answers `0.2.3`, all four subsystems ok). A stray `/usr/local/bin/kyu-runner` 0.1.0 on CT 109 is not what the unit runs |
 | Last completed gate | The chassis 2.0.2 round (2026-09-10): the bump was a dependency change and nothing else, and `chassis release` ran the whole chain itself for the first time since the CI trigger was restored |
 | Next gate | The rollout, when Kenny wants it: pick the LXC, create the HA automation FIRST, then the route, then a smoke test — and measure whether HA really answers 200 to an unknown webhook id. 1.0.0 follows that. Deploying 0.2.1 itself is **Later** by decision (U1): it changes no behaviour, so it rides along with the next rollout that matters |
-| Next action | waiting on Kenny: nothing in progress here |
+| Next action | waiting on Kenny: the decision form of 2026-09-26 (rollout against the real HA + 1.0.0, scratch LXC 191, the stray 0.1.0 binary). The `tool-help` measurement waits on the next chassis release (latest tag still v2.0.2, checked 2026-09-26) |
 | AFK mode | off |
 
 The AFK build's queue in `docs/PENDING_MINI_ROUNDS.md` is now fully
