@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+**1.0.0 is a promise, not a code change.** The condition set at the
+retrospective was that 1.0.0 follows the first rollout against the real
+Home Assistant. Measured 2026-09-26 on CT 109: 306 `homelab-ops` and 13
+`kyu-events` messages delivered with zero nacks, and HA answers 200 to a
+webhook id that does not exist, which is why the runbook creates the
+automation before the route. From here on, a change to the config format
+or to delivery behaviour needs a new major.
+
+### Migration
+
+Nothing to migrate from 0.2.3: the config format, the environment and the
+command line are unchanged.
+
 ### Changed
 
 - **chassis-rs 2.0.2 → 2.1.0** (2026-09-26), done with `chassis upgrade
