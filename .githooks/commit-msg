@@ -45,6 +45,14 @@ if [ -n "$root" ]; then
     echo "warning: .githooks/check-ids.sh is missing; the ID gate did not run." >&2
     echo "         Re-run dev-procedure's hooks/sync-hooks.sh for this project." >&2
   fi
+  # The timestamp gate (standing rule 52) travels the same way and is held
+  # to the same fail-closed warning when its file is missing.
+  if [ -x "$root/.githooks/check-timestamps.sh" ]; then
+    "$root/.githooks/check-timestamps.sh" || exit 1
+  else
+    echo "warning: .githooks/check-timestamps.sh is missing; the timestamp gate did not run." >&2
+    echo "         Re-run dev-procedure's hooks/sync-hooks.sh for this project." >&2
+  fi
 fi
 
 if ! grep -qE '\[(meta|[A-Za-z]{1,4}[0-9][^]]*|[a-z]{3,}(-[a-z0-9]+)*-[0-9]+[^]]*)\]' "$msg_file"; then
