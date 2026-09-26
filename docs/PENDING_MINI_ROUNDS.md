@@ -33,7 +33,12 @@ every other decision is provisional-by-design and queued above.
 always Kenny's explicit go (procedure), the GitHub remote is Q8, and
 the retrospective is a two-way form.
 
-## Open measurement (correction `tool-help`, 2026-09-10)
+## Measurement (correction `tool-help`, 2026-09-10) — CLOSED 2026-09-26
+
+**Result:** the next kit bump, chassis 2.0.2 → 2.1.0, was done with
+`chassis upgrade 2.1.0` after re-reading `chassis --help`; it aligned
+`chassis_tag` and both dependency lines, updated the lock and ran the
+gates green. The fallback is not needed.
 
 Kenny signed off the correction for proposing to build what `chassis
 upgrade` already did. The loop stays open here until the measurement has

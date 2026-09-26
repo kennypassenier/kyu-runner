@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+### Changed
+
+- **chassis-rs 2.0.2 → 2.1.0** (2026-09-26), done with `chassis upgrade
+  2.1.0`: the record, both dependency lines and the lock in one step, then
+  the gates, green. Nothing in the pump changes. The kit's minor adds
+  `required_checks`, which this project already carries.
+
 ## [0.2.3] - 2026-09-10
 
 ### Changed
