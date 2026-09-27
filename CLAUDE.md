@@ -17,10 +17,10 @@ gates hold from any session or terminal. After a fresh clone, run:
 
 | Field | Value |
 |---|---|
-| Current phase | all 11 phases done; **1.0.0** released 2026-09-26 on chassis 2.1.0 and running on CT 109 (read back: `/healthz` answers `1.0.0`, all five routes idle, `NRestarts=0`). `/usr/local/bin/kyu-runner` on CT 109 is now a symlink to `/opt/kyu-runner/bin/kyu-runner`; 0.2.3 is kept as `kyu-runner.prev` |
+| Current phase | all 11 phases done; **1.0.1** (chassis 2.2.1) tagged and built 2026-09-27, **not signed yet** and not `latest` (fix-10). CT 109 still runs **1.0.0** (`/healthz`), with 0.2.3 kept as `kyu-runner.prev`; `/usr/local/bin/kyu-runner` is a symlink to the unit's binary |
 | Last completed gate | Kenny's form of 2026-09-26: `release` = release and roll out, `stray` = replace the old 0.1.0 with a link. Both done the same evening |
-| Next gate | None open. The v1.0.0 release is **unsigned**: `chassis release` stopped at `scripts/sign-release.sh v1.0.0` because the minisign key is only on Garuda. Self-update is off on CT 109 (`update_mode` off), so nothing waits on the signature to run |
-| Next action | Sign v1.0.0 once the minisign key reaches WSL through the secrets sync (the workstation task in GARUDA.md): `scripts/sign-release.sh v1.0.0`, which uploads the `.minisig` and then `VERSION`. Claude does that; no Kenny step beyond the key move |
+| Next gate | Signing, done for all four chassis projects at once from a separate thread (Kenny, 2026-09-27). `chassis release 1.0.1` stopped at `scripts/sign-release.sh v1.0.1` (minisign password). v1.0.0 stays unsigned on purpose: 1.0.1 supersedes it |
+| Next action | After signing v1.0.1: confirm `releases/latest/download/VERSION` reads 1.0.1 and v1.0.1 is `latest`; then deploy per runbook §2 on CT 109 (asset checked against SHA256SUMS and the .minisig, keep the old binary as `kyu-runner.prev`, restart, `/healthz` must answer 1.0.1) |
 | AFK mode | off |
 
 The AFK build's queue in `docs/PENDING_MINI_ROUNDS.md` is now fully
