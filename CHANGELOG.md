@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+### Changed
+
+- **chassis-rs 2.1.0 → 2.2.1** (2026-09-27), with `chassis upgrade 2.2.1`
+  and `chassis sync --write`. Nothing in the pump changes. From the kit: a
+  release is no longer `latest` until it is signed, so the updater never
+  reads a missing `VERSION` (fix-10); the unit's install line sets the
+  binary's owner (fix-12); `kp_themes` is recorded as 7.2.0, which this
+  headless service does not serve. The project's one-job `ci.yml` stays as
+  decided on 2026-09-10; the scaffold's `deny`, `image` and `coverage` jobs
+  were not taken over.
+
 ## [1.0.0] - 2026-09-26
 
 **1.0.0 is a promise, not a code change.** The condition set at the

@@ -37,4 +37,7 @@ minisign -V -P "RWQWCzzUBquIHGkS3YERMkuqEm4C3vBArnlb9rySbr8z5ytgVYuji3bS" -m "$w
 echo "uploading SHA256SUMS.minisig, then VERSION"
 gh release upload "$tag" --repo "$repo" --clobber "$work/SHA256SUMS.minisig"
 gh release upload "$tag" --repo "$repo" --clobber "$work/VERSION"
+# fix-10: the workflow published without taking `latest`; the release takes
+# it only now that it is signed and VERSION is up.
+gh release edit "$tag" --repo "$repo" --latest >/dev/null
 echo "done: $repo $tag is now installable by the self-updater"

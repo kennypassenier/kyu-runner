@@ -8,8 +8,10 @@
 # the binary's directory too, or self-update verifies, downloads and then
 # fails at the swap.
 #
-# Install: install -D -m755 kyu-runner /opt/kyu-runner/bin/kyu-runner (the
-# service owns that directory: chown -R kyu-runner: /opt/kyu-runner), copy
+# Install: install -D -m755 -o kyu-runner -g kyu-runner kyu-runner /opt/kyu-runner/bin/kyu-runner
+# (the service must own the binary itself, not only its directory: Linux
+# refuses a hard link to a file another user owns, so a root-owned binary
+# stops the self-update at the swap — fix-12, kyu on CT 109), copy
 # this file to /etc/systemd/system/kyu-runner.service, create the user
 # (kyu-runner), the state dir (/appdata/kyu/kyu-runner-config) and the env file
 # (/appdata/kyu/kyu-runner-config/token.env, 0640 root:kyu-runner), then

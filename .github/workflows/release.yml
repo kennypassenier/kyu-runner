@@ -81,6 +81,11 @@ jobs:
       - name: Create the GitHub release with binary + SHA256SUMS
         uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
+          # fix-10: never `latest` until signed. The updater reads
+          # releases/latest/download/VERSION, and an unsigned release has no
+          # VERSION yet, so taking `latest` here made every nightly check 404
+          # until sign-release.sh ran (kyu v4.0.0, 2026-09-26/27).
+          make_latest: false
           files: |
             dist/kyu-runner
             dist/SHA256SUMS

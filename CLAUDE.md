@@ -47,11 +47,9 @@ branch to be up to date, admins included — so a fresh commit cannot be
 pushed straight to `main`: branch, wait for green, fast-forward.
 
 The docker-backed suites (`l2_pump` and the other hub tests) start the
-kyu hub from its published image when `KYU_BIN` is unset. On WSL the user
-is in the `docker` group, but a shell opened before that group was added
-does not carry it until the next login: run the gates through
-`echo 'bash script.sh' | newgrp docker` until then (measured 2026-09-26:
-`l2_pump` 11/11 green that way, and the whole `chassis upgrade` gate run).
+kyu hub from its published image when `KYU_BIN` is unset; on WSL the user
+is in the `docker` group (a shell older than that group needs
+`newgrp docker` until the next login).
 
 Commits are blocked unless `.claude/hooks/gates.sh` passes and the
 message carries IDs in brackets (`[K3, AR2]`, `[L1]`, `[meta]`).

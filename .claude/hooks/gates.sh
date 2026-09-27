@@ -23,15 +23,13 @@ gate_tree_fingerprint() {
   { git status --porcelain; git diff; } | sha256sum | cut -d' ' -f1
 }
 gate_tree_before=$(gate_tree_fingerprint)
-# Kenny, 2026-09-16, standing rule 49 (commit-floor and rust-suite):
-# format and lint always run, and the suite is skipped when no Rust
-# source moved. Measured across sixteen projects: 41% of commits touch
-# only documentation or configuration and paid for the suite anyway. Per
-# crate was measured and rejected — `cargo test -p <crate>` is not faster
-# than the whole workspace, because cargo runs every test binary either
-# way.
-. "$(git rev-parse --show-toplevel)/.githooks/gate-cache.sh"
 
+# Standing rule 49 (Kenny, 2026-09-16): format and lint always run, and the
+# suite is skipped when no Rust source moved since its last green run. The
+# cache lives in .git, is ignored on the first commit of the day and under
+# GATE_FULL=1, and only ever remembers a green run (fix-11: the scaffold ran
+# the suite on every commit while the projects built on it did not).
+. "$(git rev-parse --show-toplevel)/.githooks/gate-cache.sh"
 
 cargo fmt --all -- --check
 cargo clippy --all-targets -- -D warnings
