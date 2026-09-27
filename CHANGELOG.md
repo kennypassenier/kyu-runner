@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-09-27
+
 ### Changed
 
 - **chassis-rs 2.1.0 → 2.2.1** (2026-09-27), with `chassis upgrade 2.2.1`
