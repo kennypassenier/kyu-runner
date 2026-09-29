@@ -42,7 +42,7 @@ test names, docs and forms forever.
 
 | ID | Decision |
 |---|---|
-| M1 | **Update & distribution** *(amended 2026-09-05, chassis migration: glibc/trixie release via the kit's workflow, signed with `scripts/sign-release.sh`, self-update ON via chassis; the musl half is history).* GitHub release workflow: tag → build static `x86_64-unknown-linux-musl` binary → checksum manifest → GitHub Release. Installing/updating on LXC 109 is a numbered runbook procedure (download, verify checksum, replace binary, restart unit). **No self-update, by decision** — a LAN daemon on one machine, updated deliberately. |
+| M1 | **Update & distribution** *(amended 2026-09-05, chassis migration: glibc/trixie release via the kit's workflow, signed with `scripts/sign-release.sh`, self-update ON via chassis; the musl half is history. Amended 2026-09-29, chassis 3.0.0: static musl again, built, checksummed and published from the release machine by `chassis release <version>` instead of a GitHub workflow).* GitHub release workflow: tag → build static `x86_64-unknown-linux-musl` binary → checksum manifest → GitHub Release. Installing/updating on LXC 109 is a numbered runbook procedure (download, verify checksum, replace binary, restart unit). **No self-update, by decision** — a LAN daemon on one machine, updated deliberately. |
 | M2 | **Ecosystem integration.** Consumes **kyu** (the point). Token delivery: systemd `EnvironmentFile` (0600, root) now; **latch** recorded as the migration candidate for a mini-round once latch manages LXC 109. Deployment: native systemd like the hub, NOT the homelab preset — deliberate, mirrors Kenny's hub choice. Monitoring rides **Uptime Kuma** + **Grafana** (K11). |
 | M3 | **Backup & restore.** The runner's full state = config file + unit file (both in git; deployed copies are just copies) + the app token (re-mintable on the hub's `/apps` page in seconds). Therefore: **state-in-git + re-mint, no backup jobs, by decision.** Restore-from-zero is a numbered runbook procedure and is drilled against the scratch hub in Phase 7. The backup is automatic by construction (git); the restore is exercised, not assumed. |
 
@@ -64,5 +64,5 @@ test names, docs and forms forever.
 | W2 | E2E: invalid config → non-zero exit + remedy; valid → zero exit, no network calls. |
 | W3 | E2E: after startup the hub's policy endpoint reports the configured values. |
 | W4 | E2E: `/healthz` answers 200 while routes run. |
-| M1 | Workflow exists and is exercised at the first tag (Phase 9); checksum verified in the release drill. |
+| M1 | Workflow exists and is exercised at the first tag (Phase 9); checksum verified in the release drill. *Since 2026-09-29: `chassis release <version> --dry-run` builds and verifies the same assets locally.* |
 | M3 | Restore-from-zero drill against the scratch hub (Phase 7), following the runbook literally. |

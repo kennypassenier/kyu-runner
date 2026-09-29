@@ -49,6 +49,10 @@ Phases 3-4 output. T = tech choice, AR = architecture.
   *Amendment 2026-09-05 (chassis migration, 0.2.0): the release artifact is a
   glibc binary for Debian trixie built by the kit's release workflow (T8 of
   chassis-rs); the musl choice below is history.*
+  *Amendment 2026-09-29 (chassis 3.0.0): the release artifact is the static
+  musl binary again (kit feat-build-1, 2026-09-10), and it is built on the
+  release machine by `chassis release <version>` in a `rust:1.97-slim-trixie`
+  container; GitHub Actions builds nothing.*
   Release artifact: **`x86_64-unknown-linux-musl`, statically linked** —
   LXC 109's libc is not this Arch machine's libc, and a static binary
   removes the whole class (the runner needs no C dependencies; there is

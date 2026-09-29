@@ -37,7 +37,9 @@ Reality checks baked into these procedures (from the Phase 4 critic):
    - from a release: download `kyu-runner` +
      `SHA256SUMS` from the GitHub release, then `sha256sum -c SHA256SUMS`;
    - or locally: `scripts/drill-release.sh` of the kit builds a drill
-     release; `scripts/sign-release.sh` signs a CI-built one.
+     release; `chassis release <version>` (chassis-rs >= 3.0.0) builds,
+     publishes and signs a real one on this machine (`--dry-run` builds
+     the same `dist/kyu-runner` + `dist/SHA256SUMS` without uploading).
 2. Copy it in place:
    `scp kyu-runner root@<target-lxc>:/opt/kyu-runner/bin/kyu-runner`
    and `chmod 755 /opt/kyu-runner/bin/kyu-runner`.

@@ -5,8 +5,10 @@ use std::io::Write;
 use std::process::Command;
 
 fn run(args: &[&str]) -> std::process::Output {
-    // KYU_RUNNER_BIN lets the release workflow run this suite against the
-    // release artifact (T8/M1). The kit's --check probes the state
+    // KYU_RUNNER_BIN lets a person run this suite against a built release
+    // artifact (e.g. dist/kyu-runner); nothing sets it automatically since
+    // the pre-chassis release workflow was replaced (0.2.0, 2026-09-05).
+    // The kit's --check probes the state
     // directory (rule 12), so every run gets a scratch one.
     let binary =
         std::env::var("KYU_RUNNER_BIN").unwrap_or_else(|_| env!("CARGO_BIN_EXE_kyu-runner").into());

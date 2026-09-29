@@ -50,6 +50,29 @@ Every commit then runs format check, clippy (warnings are errors) and
 the full test suite, and requires feature IDs in the message
 (`[K3, AR2]` or `[meta]`). CI re-runs the same gates on every push.
 
+## Releasing
+
+A release is built and published from this machine, not by GitHub
+Actions: `chassis release <version>` (chassis-rs >= 3.0.0) runs the full
+gate (fmt, clippy, tests, `.claude/hooks/gates.project.sh`, cargo-deny,
+the image smoke), bumps `Cargo.toml` + `CHANGELOG.md`, commits and tags,
+builds the static musl `kyu-runner` in docker, refuses it if `ldd` shows
+a `=>` line, writes `dist/kyu-runner` + `dist/SHA256SUMS`, builds
+`ghcr.io/kennypassenier/kyu-runner:v<version>` + `:latest`, and only
+then pushes `main` + the tag, pushes both image tags, creates the GitHub
+release (not `latest`) with the binary and the manifest, and runs
+`scripts/sign-release.sh v<version>`. `chassis release <version>
+--dry-run` rehearses everything up to the commit and uploads nothing.
+The release machine needs docker logged in to ghcr.io with
+`write:packages`, cargo-deny, gh and minisign.
+
+*The pin in `.chassis.toml` is still v2.2.1, whose `chassis release`
+waited for a GitHub workflow that no longer exists. Until
+`chassis upgrade 3.0.0` + `chassis sync --write` have run here, do not
+release.*
+
+## Tests
+
 Tests spawn a local scratch hub: set `KYU_BIN` to a kyu binary
 (default: `~/Projects/kyu/target/release/kyu` if present) or
 have docker available (`KYU_IMAGE`, default

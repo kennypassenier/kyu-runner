@@ -764,9 +764,10 @@ impl Runner {
         let state = tempfile::tempdir().expect("state dir");
         let log = tempfile::NamedTempFile::new().expect("log file");
         let (log_file, log_path) = log.keep().expect("keep log");
-        // KYU_RUNNER_BIN lets the release workflow run this suite against
-        // the musl artifact — the shipped binary is the tested binary
-        // (T8/M1).
+        // KYU_RUNNER_BIN lets a person run this suite against the musl
+        // artifact (e.g. dist/kyu-runner) to test the shipped binary
+        // (T8/M1). Nothing sets it automatically: the release workflow that
+        // did was replaced at 0.2.0 (2026-09-05).
         let binary = std::env::var("KYU_RUNNER_BIN")
             .unwrap_or_else(|_| env!("CARGO_BIN_EXE_kyu-runner").into());
         let mut command = Command::new(binary);

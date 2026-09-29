@@ -68,6 +68,17 @@ jobs more (`deny`, `image`, `coverage`) that this project deliberately does
 not run. The three shared hooks are no longer sync's business since kit
 2.0.2 — dev-procedure owns them.
 
+## Releasing
+
+`chassis release <version>` (chassis-rs >= 3.0.0) builds and publishes
+the release on this machine: gate, bump + tag, static musl binary in
+docker (`ldd` refusal), `dist/kyu-runner` + `dist/SHA256SUMS`, image
+`ghcr.io/kennypassenier/kyu-runner:v<version>` + `:latest`, then push,
+`gh release create` (not `latest`) and `scripts/sign-release.sh`.
+`--dry-run` stops before any commit, tag or upload. There is no release
+workflow any more (removed 2026-09-29). The pin is still v2.2.1: run
+`chassis upgrade 3.0.0` + `chassis sync --write` before the next release.
+
 ## Scratch hub for development/tests
 
 Tests spawn a local hub themselves (see `tests/support/`): the binary

@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+### Changed
+
+- **Releases are built and published locally, not by GitHub Actions**
+  (2026-09-29). `.github/workflows/release.yml` is gone; `chassis release
+  <version>` (chassis-rs >= 3.0.0) runs the gate, builds the static musl
+  binary, `SHA256SUMS` and the `ghcr.io/kennypassenier/kyu-runner` image on
+  this machine, then pushes, creates the release (not `latest`) and signs.
+  `--dry-run` rehearses without uploading. The pin is still v2.2.1:
+  `chassis upgrade 3.0.0` + `chassis sync --write` come first.
+
 ## [1.0.1] - 2026-09-27
 
 ### Changed
