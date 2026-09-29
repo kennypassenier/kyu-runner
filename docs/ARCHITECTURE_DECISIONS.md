@@ -45,6 +45,9 @@ Phases 3-4 output. T = tech choice, AR = architecture.
 - **T7 · Dependency policy: reluctant, policed.** Each direct
   dependency justified in the commit that adds it; **cargo-deny** in CI
   (advisories, licenses, duplicates) — kyu's regime.
+  *Amendment 2026-09-29: there is no GitHub Actions CI any more; cargo-deny
+  runs in the local release gate (`chassis release`, and the version-bump
+  commit via `.claude/hooks/gates.project.sh`).*
 - **T8 · Platform & targets.** Dev + CI: `x86_64-unknown-linux-gnu`.
   *Amendment 2026-09-05 (chassis migration, 0.2.0): the release artifact is a
   glibc binary for Debian trixie built by the kit's release workflow (T8 of

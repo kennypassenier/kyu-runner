@@ -42,9 +42,10 @@ the standalone Proxmox showed no 191 on 2026-09-26.
 
 ## Gates (enforced)
 
-`main` on GitHub requires the `gates` and `deny` checks and requires the
-branch to be up to date, admins included — so a fresh commit cannot be
-pushed straight to `main`: branch, wait for green, fast-forward.
+There is no GitHub Actions CI (removed 2026-09-29). Branch protection on
+`main` still requires the `fmt · clippy · tests` check that only the
+removed CI produced, so pushes to `main` are refused until Kenny drops
+that requirement on GitHub (`chassis sync --protect` of 3.0.0 sets none).
 
 The docker-backed suites (`l2_pump` and the other hub tests) start the
 kyu hub from its published image when `KYU_BIN` is unset; on WSL the user
@@ -55,17 +56,16 @@ Commits are blocked unless `.claude/hooks/gates.sh` passes and the
 message carries IDs in brackets (`[K3, AR2]`, `[L1]`, `[meta]`).
 Enforced twice over: `.githooks/pre-commit` + `.githooks/commit-msg`
 (repo-scoped, any session) and `.claude/hooks/check-commit.sh` via
-`.claude/settings.json`. CI re-runs the gates on every push.
+`.claude/settings.json`. `chassis release` re-runs the full gate (fmt,
+clippy, tests, gates.project.sh, cargo-deny, image smoke) before it
+commits; `chassis release <next> --dry-run` runs it without releasing.
 `.claude/hooks/gates.project.sh` adds the project's own check: a test
 total quoted in README.md or docs/TEST_PLAN.md must match the suite.
 
-**CI runs on every branch** (restored 2026-09-10), so a branch push
-produces the check branch protection waits for and `main` is reachable by
-fast-forward again. `gates` is the only job, which is what narrowing the
-trigger was really after. `chassis sync` still reports
-`.github/workflows/ci.yml` as drift and should: the scaffold carries three
-jobs more (`deny`, `image`, `coverage`) that this project deliberately does
-not run. The three shared hooks are no longer sync's business since kit
+The image smoke (`docker build` + `--version` + a failing closed-port
+`--healthcheck`) and coverage (informational) run in `chassis release`'s
+gate; there is no workflow for `chassis sync` to report as drift any more.
+The three shared hooks are no longer sync's business since kit
 2.0.2 — dev-procedure owns them.
 
 ## Releasing
@@ -83,5 +83,6 @@ workflow any more (removed 2026-09-29). The pin is still v2.2.1: run
 
 Tests spawn a local hub themselves (see `tests/support/`): the binary
 at `KYU_BIN` (default: `~/Projects/kyu/target/release/kyu`)
-or the public `ghcr.io/kennypassenier/kyu` image in CI. Never
+or the pinned public `ghcr.io/kennypassenier/kyu` image when it is
+unset or empty. Never
 `10.10.10.9:8080`.

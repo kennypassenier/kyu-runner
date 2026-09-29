@@ -10,7 +10,8 @@ publish = false
 
 # Dependency policy T7 ("reluctant, policed"): each direct dependency is
 # justified here, and cargo-deny checks advisories, licenses and
-# duplicates in CI.
+# duplicates in the release gate (`chassis release`, and the version-bump
+# commit through .claude/hooks/gates.project.sh).
 [dependencies]
 # The shared foundation (chassis-rs): configuration, logging, health,
 # metrics, shutdown, self-update. Pinned to a tag, like every consumer.

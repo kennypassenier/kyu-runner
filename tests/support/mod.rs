@@ -1,6 +1,6 @@
 //! E2E support: a real scratch hub (standing rule 9 — the real thing,
 //! never a mock of the hub), a fake HA webhook server (HA cannot be
-//! real in CI — what the fake cannot express is recorded in
+//! real in a test — what the fake cannot express is recorded in
 //! TEST_PLAN.md), and a runner process handle.
 
 #![allow(dead_code)]
@@ -93,7 +93,7 @@ pub fn free_port() -> u16 {
 fn hub_binary() -> Option<PathBuf> {
     if let Ok(path) = std::env::var("KYU_BIN") {
         // KYU_BIN="" forces the docker path even when the default
-        // binary exists — how CI's environment is rehearsed locally.
+        // binary exists — how the docker-only path is exercised.
         return (!path.is_empty()).then(|| PathBuf::from(path));
     }
     let default =
@@ -211,7 +211,7 @@ impl Hub {
                     // Pinned to the published v3.0.0 image — the version the
                     // hub on CT 109 is heading for. It was 2.0.0 until
                     // 2026-09-09; on 2.x the suite published without a bearer,
-                    // which 3.0.0 answers with 401, so CI would otherwise stay
+                    // which 3.0.0 answers with 401, so the suite would otherwise stay
                     // green against a hub two majors behind production.
                     .unwrap_or_else(|_| "ghcr.io/kennypassenier/kyu@sha256:d87d692cce8eb76340fce0fb740c9c1185f37adbcd91d761ccb69f567b111047".into());
                 let mut args: Vec<String> = vec![
@@ -326,7 +326,7 @@ impl Hub {
         assert!(self.process.is_none(), "stop() first");
         // The docker path loses /data on rm; bind the tempdir instead
         // would need matching uids — the binary path is the primary
-        // restart vehicle. CI's suite skips restart drills when only
+        // restart vehicle. The suite skips restart drills when only
         // docker is available.
         assert!(
             self.binary.is_some(),

@@ -10,7 +10,7 @@ use support::*;
 async fn l3_k7_a_hub_outage_is_one_log_line_and_recovery_is_automatic() {
     let mut hub = Hub::start().await;
     if !hub.supports_restart() {
-        // Loud, not silent: under docker-only (CI) the restart drill
+        // Loud, not silent: under docker-only (no KYU_BIN) the restart drill
         // cannot keep the data dir. Recorded in TEST_PLAN.md.
         eprintln!("SKIPPED: hub restart drill needs KYU_BIN (docker keeps no state)");
         return;

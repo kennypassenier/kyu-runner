@@ -60,7 +60,7 @@ headless caller driving another kit service's clients API — and the
 harness now uses it. The runner under test gets the same token; `/api/…` management
 calls use the admin token. The docker fallback moved from the pinned
 2.0.0 image to the pinned **v3.0.0** image
-(`sha256:d87d692c…`), so CI no longer proves the pump against a hub two
+(`sha256:d87d692c…`), so the docker path no longer proves the pump against a hub two
 majors behind what CT 109 will run.
 
 The K9 door drill could not survive unchanged: a client token is
@@ -128,10 +128,13 @@ consecutive full-gate runs, all green.
 Four of the eight open gaps were closed on Kenny's instruction rather
 than accepted:
 
-- **CI ran without the hub-restart drill.** CI now lifts the kyu binary
-  out of the published image and sets `KYU_BIN`, so the stop/start
-  drill (and the token drill below) run there too — "CI is green" no
-  longer quietly excludes them.
+- **CI ran without the hub-restart drill.** CI then lifted the kyu binary
+  out of the published image and set `KYU_BIN`, so the stop/start
+  drill (and the token drill below) ran there too. *Since 2026-09-29
+  there is no GitHub Actions CI: the suite runs locally (commit hook and
+  `chassis release`'s gate), where `KYU_BIN` defaults to
+  `~/Projects/kyu/target/release/kyu`; without a kyu binary the restart
+  drills print SKIPPED.*
 - **Second signal and the shutdown bound.**
   `l3_w1_a_second_signal_exits_immediately` (exit code 130, well inside
   the grace) and `l3_ar9_shutdown_never_outlasts_the_derived_grace`

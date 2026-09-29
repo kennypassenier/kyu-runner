@@ -47,10 +47,13 @@ fi
 
 [ "$fail" = 0 ] || exit "$fail"
 
-# C · cargo-deny at the release tier (Kenny, 2026-09-25). CI runs one job
-# (gates), and the kit's gates.sh says "cargo-deny runs in CI only", so
-# until this block it ran nowhere. Like http-switchboard, the release commit
-# is the one that moves the package version: only that commit pays for it.
+# C · cargo-deny at the release tier (Kenny, 2026-09-25). The kit's gates.sh
+# leaves cargo-deny out of the per-commit gate, so this block runs it on the
+# commit that moves the package version (the bump commit `chassis release`
+# makes); only that commit pays for it. There is no GitHub Actions CI any
+# more (2026-09-29): `chassis release <version>` also runs `cargo deny check
+# all` in its own gate before it commits, and `chassis release <next>
+# --dry-run` runs that whole gate without releasing.
 version=$(grep -m1 '^version' Cargo.toml | sed -E 's/.*"(.*)".*/\1/')
 if [ -n "$version" ] && ! git rev-parse -q --verify "refs/tags/v$version" >/dev/null 2>&1 \
    && git diff --cached --unified=0 -- Cargo.toml 2>/dev/null | grep -qE '^\+version = '; then

@@ -28,15 +28,18 @@ running on CT 109 since 2026-08-31. What each release changed is in
 
 ## Branch protection changes the daily flow
 
-`main` requires the `gates` and `deny` checks to pass and requires the
-branch to be up to date, for everyone including the repository owner.
+There is no GitHub Actions CI (removed 2026-09-29): the gates run on
+this machine, at every commit (hooks below) and in full in
+`chassis release <version>`. To run the full release gate without
+releasing: `chassis release <next-version> --dry-run` (chassis-rs >= 3.0.0).
 There is deliberately **no** pull-request review requirement — on a
 single-committer repository that would be ceremony without a reviewer.
 
-The consequence is worth knowing before it surprises you: a direct
-push of a fresh commit to `main` is refused, because that commit has
-no passing checks yet. The flow is therefore: work on a branch, push
-it, wait for CI to go green, then fast-forward `main`.
+Worth knowing before it surprises you: as of 2026-09-29 branch
+protection on `main` still requires the `fmt · clippy · tests` check,
+which only the removed CI produced, so a push to `main` is refused
+until that requirement is dropped on GitHub (`chassis sync --protect`
+of chassis 3.0.0 sets no required checks).
 
 ## Development setup (one-time per clone)
 
@@ -48,7 +51,8 @@ git config core.hooksPath .githooks
 
 Every commit then runs format check, clippy (warnings are errors) and
 the full test suite, and requires feature IDs in the message
-(`[K3, AR2]` or `[meta]`). CI re-runs the same gates on every push.
+(`[K3, AR2]` or `[meta]`). `chassis release` re-runs the full gate
+(plus cargo-deny and the image smoke) before it commits a release.
 
 ## Releasing
 
