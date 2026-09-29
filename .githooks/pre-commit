@@ -3,4 +3,13 @@
 # this repository — any session, any terminal, any tool.
 # Enable in a fresh clone with:  git config core.hooksPath .githooks
 set -euo pipefail
+# One full test run per release (Kenny, 2026-09-29): workstation's
+# gate-stamp skips the suite for a commit that only moves the version (the
+# commit `chassis release` makes), and stamps a green tree so the release
+# does not test it again. Without workstation the gates simply run.
+gate_stamp="$HOME/Projects/workstation/bin/gate-stamp"
+if [ -x "$gate_stamp" ]; then
+  exec "$gate_stamp" hook "$(git rev-parse --show-toplevel)/.claude/hooks/gates.sh" \
+    'Cargo.toml:^version = ' 'Cargo.lock:^version = ' 'CHANGELOG.md:.*'
+fi
 exec "$(git rev-parse --show-toplevel)/.claude/hooks/gates.sh"

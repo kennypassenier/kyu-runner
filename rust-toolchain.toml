@@ -1,4 +1,5 @@
-# The one Rust this project builds with, here and in CI (standing rule 7):
+# The one Rust this project builds with, in the gates and in `chassis release`
+# (standing rule 7):
 # a gate that does not predict the build is not a gate. Raising it is a
 # deliberate act: bump the channel here and `rust-version` in Cargo.toml
 # together, run the gates, fix what the newer clippy has learned.

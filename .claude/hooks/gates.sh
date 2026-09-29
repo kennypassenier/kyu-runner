@@ -2,7 +2,8 @@
 # Project quality gates: format, clippy with warnings as errors, the full
 # test suite, and the clean-tree check. Called by .githooks/pre-commit for
 # every commit and by .claude/hooks/check-commit.sh before Claude's
-# commits; non-zero exit blocks the commit. cargo-deny runs in CI only.
+# commits; non-zero exit blocks the commit. cargo-deny, the image build and
+# coverage run in `chassis release`, which runs the full gate before a tag.
 set -euo pipefail
 
 cd "$(git rev-parse --show-toplevel)"

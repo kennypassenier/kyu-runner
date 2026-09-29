@@ -1,5 +1,6 @@
-# Dependency policy: pragmatic, policed. Checked in CI on every push and
-# weekly (advisories move without our code moving).
+# Dependency policy: pragmatic, policed. Checked by `chassis release` on
+# this machine before every release (`cargo deny check all`); run it by hand
+# when an advisory might have moved without our code moving.
 
 [advisories]
 yanked = "deny"

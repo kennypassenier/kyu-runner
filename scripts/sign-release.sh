@@ -5,9 +5,10 @@
 #
 #   scripts/sign-release.sh v1.2.0
 #
-# What it does: downloads SHA256SUMS from the GitHub release the CI made,
-# signs it with minisign (one password prompt — the key never leaves this
-# machine), writes VERSION, and uploads SHA256SUMS.minisig BEFORE VERSION
+# What it does: downloads SHA256SUMS from the GitHub release that
+# `chassis release` created, signs it with minisign (one password prompt —
+# the key never leaves this machine), writes VERSION, and uploads
+# SHA256SUMS.minisig BEFORE VERSION
 # (critic #15: an updater that sees VERSION first would count a missing
 # signature as a failure).
 set -euo pipefail
@@ -25,7 +26,7 @@ done
 
 echo "downloading SHA256SUMS of $tag from $repo"
 gh release download "$tag" --repo "$repo" -p SHA256SUMS -D "$work"
-[ -s "$work/SHA256SUMS" ] || { echo "the release has no SHA256SUMS yet. What now: wait for the Release workflow to finish." >&2; exit 1; }
+[ -s "$work/SHA256SUMS" ] || { echo "the release has no SHA256SUMS yet. What now: create the release first (`chassis release <version>` does)." >&2; exit 1; }
 
 echo "signing (minisign will ask for the key password)"
 minisign -S -s "$key" -m "$work/SHA256SUMS" -x "$work/SHA256SUMS.minisig" -t "$repo $tag"
@@ -37,7 +38,7 @@ minisign -V -P "RWQWCzzUBquIHGkS3YERMkuqEm4C3vBArnlb9rySbr8z5ytgVYuji3bS" -m "$w
 echo "uploading SHA256SUMS.minisig, then VERSION"
 gh release upload "$tag" --repo "$repo" --clobber "$work/SHA256SUMS.minisig"
 gh release upload "$tag" --repo "$repo" --clobber "$work/VERSION"
-# fix-10: the workflow published without taking `latest`; the release takes
+# fix-10: `chassis release` published without taking `latest`; the release takes
 # it only now that it is signed and VERSION is up.
 gh release edit "$tag" --repo "$repo" --latest >/dev/null
 echo "done: $repo $tag is now installable by the self-updater"
