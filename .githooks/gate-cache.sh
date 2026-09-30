@@ -122,8 +122,28 @@ gate_traceable() {
   esac
 }
 
+# Tests wait for the release (Kenny, 2026-09-30: "tests draaien we vanaf
+# nu pas na dat ik de toestemming geef voor een release"). A check whose
+# command runs a test suite is skipped at commit and runs only when the
+# caller sets GATE_FULL=1 (every release script does) or GATE_TESTS=1.
+# Scans (gitleaks, cargo-deny, audits), fmt, lint and builds still run.
+# Neither a skipped test nor its cache entry vouches for anything, so
+# nothing is recorded for it.
+gate_skipped_tests=0
+_gate_is_test() {
+  printf '%s\n' "$*" | grep -Eq '(cargo (test|nextest)|dotnet test|node --test|npm (run )?test|npx (vitest|playwright)|vitest|playwright test|artisan test|pytest|go test|test-subset)'
+}
+_gate_tests_wait() {
+  [ "${GATE_FULL:-0}" = 1 ] || [ "${GATE_TESTS:-0}" = 1 ] && return 1
+  _gate_is_test "$@" || return 1
+  gate_skipped_tests=$((gate_skipped_tests + 1))
+  printf 'gate-cache: %s overgeslagen, tests draaien pas bij de release\n' "$GATE_NAME_FOR_LOG"
+  return 0
+}
+
 gate() {
   local name="$1"; shift
+  GATE_NAME_FOR_LOG="$name"; _gate_tests_wait "$@" && return 0
   local had_e=0; case $- in *e*) had_e=1; set +e;; esac
   local inputs="$gate_cachedir/$name.inputs"
   local stamp="$gate_cachedir/$name.hash"
@@ -179,6 +199,7 @@ gate_glob() {
   local globs=()
   while [ "$#" -gt 0 ] && [ "$1" != "--" ]; do globs+=("$1"); shift; done
   [ "${1:-}" = "--" ] && shift
+  GATE_NAME_FOR_LOG="$name"; _gate_tests_wait "$@" && { _gate_return "$had_e" 0; return; }
   local inputs="$gate_cachedir/$name.inputs"
   local stamp="$gate_cachedir/$name.hash"
 
@@ -211,4 +232,6 @@ gate_cache_done() {
     [ "$gate_untraceable" -gt 0 ] && printf ' (%d daarvan draaien altijd: hun invoer is hier niet op te nemen)' "$gate_untraceable"
     printf '\n'
   fi
+  [ "$gate_skipped_tests" -gt 0 ] && printf 'gate-cache: %d testchecks wachten op de release (GATE_FULL=1 of GATE_TESTS=1 draait ze)\n' "$gate_skipped_tests"
+  return 0
 }
