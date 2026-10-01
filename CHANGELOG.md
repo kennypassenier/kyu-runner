@@ -2,15 +2,26 @@
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-10-01
+
 ### Changed
 
+- **chassis-rs 3.0.0 → 3.1.0**, `chassis upgrade 3.0.0` + `chassis sync
+  --write`. The unit (`deploy/kyu-runner.service`) gains
+  `RuntimeDirectory=kyu-runner` / `RuntimeDirectoryMode=0700`, the home of
+  `/run/kyu-runner/backup.sock` that `kyu-runner backup-pause` talks to;
+  without it the pause falls back to stopping the unit. `kp_themes` moves
+  to 8.1.0 (vendored by the kit; kyu-runner serves no dashboard, so this is
+  not visible). The pump keeps no state of its own — no token, no cursor,
+  nothing written outside the kit's own stores — so there is nothing to
+  wrap in `chassis::shell::backup::writing()`; the kit's pause already
+  covers everything this binary writes.
 - **Releases are built and published locally, not by GitHub Actions**
   (2026-09-29). `.github/workflows/release.yml` is gone; `chassis release
   <version>` (chassis-rs >= 3.0.0) runs the gate, builds the static musl
   binary, `SHA256SUMS` and the `ghcr.io/kennypassenier/kyu-runner` image on
   this machine, then pushes, creates the release (not `latest`) and signs.
-  `--dry-run` rehearses without uploading. The pin is still v2.2.1:
-  `chassis upgrade 3.0.0` + `chassis sync --write` come first.
+  `--dry-run` rehearses without uploading.
 
 ## [1.0.1] - 2026-09-27
 

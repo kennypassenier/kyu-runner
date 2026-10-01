@@ -30,6 +30,10 @@ User=kyu-runner
 Group=kyu-runner
 EnvironmentFile=/appdata/kyu/kyu-runner-config/token.env
 WorkingDirectory=/appdata/kyu/kyu-runner-config
+# feat-backup-1: /run/kyu-runner/backup.sock, where `kyu-runner backup-pause`
+# reaches the running service; outside the state root, so never archived.
+RuntimeDirectory=kyu-runner
+RuntimeDirectoryMode=0700
 ExecStartPre=/opt/kyu-runner/bin/kyu-runner --check
 ExecStart=/opt/kyu-runner/bin/kyu-runner
 Restart=always

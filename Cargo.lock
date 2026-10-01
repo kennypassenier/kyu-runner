@@ -281,8 +281,8 @@ dependencies = [
 
 [[package]]
 name = "chassis"
-version = "3.0.0"
-source = "git+https://github.com/kennypassenier/chassis-rs?tag=v3.0.0#18be0261b3d24027b71845956db00497c954f5bb"
+version = "3.1.0"
+source = "git+https://github.com/kennypassenier/chassis-rs?tag=v3.1.0#cd9dee8978dcd69eab09b07e70014e28f75aee4e"
 dependencies = [
  "axum",
  "axum-extra",
@@ -1012,7 +1012,7 @@ dependencies = [
 
 [[package]]
 name = "kyu-runner"
-version = "1.0.1"
+version = "1.1.0"
 dependencies = [
  "anyhow",
  "axum",
