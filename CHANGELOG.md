@@ -4,6 +4,8 @@
 
 ## [1.1.0] - 2026-10-01
 
+## [1.1.0] - 2026-10-01
+
 ### Changed
 
 - **chassis-rs 3.0.0 → 3.1.0**, `chassis upgrade 3.0.0` + `chassis sync
