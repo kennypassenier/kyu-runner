@@ -15,7 +15,7 @@ publish = false
 [dependencies]
 # The shared foundation (chassis-rs): configuration, logging, health,
 # metrics, shutdown, self-update. Pinned to a tag, like every consumer.
-chassis = { git = "https://github.com/kennypassenier/chassis-rs", rev = "b3b28b2bcfb8f65df6fc17fb6542633a58ae90b1", default-features = false, features = ["core", "self-update"] } # fix-15 prep: pinned by rev to the pre-release App::brand_title commit, no version requirement yet since chassis-rs Cargo.toml still says 3.1.0 until release
+chassis = { version = "3.2.0", git = "https://github.com/kennypassenier/chassis-rs", tag = "v3.2.0", default-features = false, features = ["core", "self-update"] }
 axum = { version = "0.8", default-features = false, features = ["http1", "tokio"] }  # the Router type the kit takes
 anyhow = "1"                                                    # error context inside the hub/webhook clients (T6)
 reqwest = { version = "0.12", default-features = false }        # HTTP client, no TLS: LAN plain HTTP only (T3, AR11)
@@ -28,4 +28,4 @@ tracing = "0.1"                                                 # structured eve
 [dev-dependencies]
 reqwest = { version = "0.12", default-features = false }        # test-side HTTP against the real hub (SR9)
 tempfile = "3"                                                  # scratch-hub data dirs in E2E (SR9)
-chassis = { git = "https://github.com/kennypassenier/chassis-rs", rev = "b3b28b2bcfb8f65df6fc17fb6542633a58ae90b1", default-features = false, features = ["core"] }  # AdminApi: issue a hub client token in the E2E harness
+chassis = { version = "3.2.0", git = "https://github.com/kennypassenier/chassis-rs", tag = "v3.2.0", default-features = false, features = ["core"] }  # AdminApi: issue a hub client token in the E2E harness
