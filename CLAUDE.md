@@ -86,3 +86,13 @@ at `KYU_BIN`, by default the newest signed kyu release that
 `workstation/bin/kyu-latest` fetches and verifies. `KYU_BIN=""` still
 forces the old docker path, whose pinned image no longer exists on ghcr.
 Never `10.10.10.9:8080`.
+
+## When tests run (Kenny, 2026-10-04, test report)
+
+A commit runs fmt and clippy only, and skips them when their input did not
+move. The whole suite runs once, at the release (`chassis release`, or
+`scripts/release-kit.sh` in chassis-rs), side by side under cargo-nextest
+when it is installed; suites that share ports or fixtures are grouped in
+`.config/nextest.toml`. When Kenny says a release goes without tests, it
+does. A test that waits on the clock gets a short test value instead of the
+production one; no test may cost development time it does not need.
