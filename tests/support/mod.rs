@@ -96,9 +96,29 @@ fn hub_binary() -> Option<PathBuf> {
         // binary exists — how the docker-only path is exercised.
         return (!path.is_empty()).then(|| PathBuf::from(path));
     }
-    let default =
-        PathBuf::from(std::env::var("HOME").ok()?).join("Projects/kyu/target/release/kyu");
-    default.exists().then_some(default)
+    // The newest signed kyu release, verified and cached by the
+    // workstation's kyu-latest (Kenny, 2026-10-04: tests run against the
+    // latest kyu, never a pinned one; the pinned ghcr image was deleted
+    // when kyu became a native service).
+    // Asked once per test binary: every Hub::start shares the answer.
+    static LATEST: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
+    let home = std::env::var("HOME").ok()?;
+    Some(
+        LATEST
+            .get_or_init(|| {
+                let helper = PathBuf::from(home).join("Projects/workstation/bin/kyu-latest");
+                let out = Command::new(&helper).output().unwrap_or_else(|e| {
+                    panic!("{}: {e}; set KYU_BIN to a kyu binary", helper.display())
+                });
+                assert!(
+                    out.status.success(),
+                    "kyu-latest failed: {}; set KYU_BIN to a kyu binary",
+                    String::from_utf8_lossy(&out.stderr)
+                );
+                PathBuf::from(String::from_utf8_lossy(&out.stdout).trim())
+            })
+            .clone(),
+    )
 }
 
 impl Hub {

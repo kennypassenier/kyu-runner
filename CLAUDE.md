@@ -47,10 +47,10 @@ There is no GitHub Actions CI (removed 2026-09-29). Branch protection on
 removed CI produced, so pushes to `main` are refused until Kenny drops
 that requirement on GitHub (`chassis sync --protect` of 3.0.0 sets none).
 
-The docker-backed suites (`l2_pump` and the other hub tests) start the
-kyu hub from its published image when `KYU_BIN` is unset; on WSL the user
-is in the `docker` group (a shell older than that group needs
-`newgrp docker` until the next login).
+The hub suites (`l2_pump` and the other hub tests) start the newest signed
+kyu release when `KYU_BIN` is unset: `~/Projects/workstation/bin/kyu-latest`
+downloads it, checks it against SHA256SUMS and the ecosystem minisign key,
+and caches it (Kenny, 2026-10-04: always the latest kyu, never a pin).
 
 Commits are blocked unless `.claude/hooks/gates.sh` passes and the
 message carries IDs in brackets (`[K3, AR2]`, `[L1]`, `[meta]`).
@@ -82,7 +82,7 @@ workflow any more (removed 2026-09-29). The pin is still v2.2.1: run
 ## Scratch hub for development/tests
 
 Tests spawn a local hub themselves (see `tests/support/`): the binary
-at `KYU_BIN` (default: `~/Projects/kyu/target/release/kyu`)
-or the pinned public `ghcr.io/kennypassenier/kyu` image when it is
-unset or empty. Never
-`10.10.10.9:8080`.
+at `KYU_BIN`, by default the newest signed kyu release that
+`workstation/bin/kyu-latest` fetches and verifies. `KYU_BIN=""` still
+forces the old docker path, whose pinned image no longer exists on ghcr.
+Never `10.10.10.9:8080`.
