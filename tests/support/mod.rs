@@ -227,13 +227,10 @@ impl Hub {
                 HubProcess::Binary { child }
             }
             None => {
+                // Only on request (KYU_BIN="" plus KYU_IMAGE): no kyu image is
+                // published any more, so there is no default to fall back on.
                 let image = std::env::var("KYU_IMAGE")
-                    // Pinned to the published v3.0.0 image — the version the
-                    // hub on CT 109 is heading for. It was 2.0.0 until
-                    // 2026-09-09; on 2.x the suite published without a bearer,
-                    // which 3.0.0 answers with 401, so the suite would otherwise stay
-                    // green against a hub two majors behind production.
-                    .unwrap_or_else(|_| "ghcr.io/kennypassenier/kyu@sha256:d87d692cce8eb76340fce0fb740c9c1185f37adbcd91d761ccb69f567b111047".into());
+                    .expect("KYU_BIN is empty: set KYU_IMAGE to a kyu image, or unset KYU_BIN to use the latest kyu");
                 let mut args: Vec<String> = vec![
                     "run".into(),
                     "-d".into(),
