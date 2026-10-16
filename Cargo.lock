@@ -281,8 +281,8 @@ dependencies = [
 
 [[package]]
 name = "chassis"
-version = "3.7.0"
-source = "git+https://github.com/kennypassenier/chassis-rs?tag=v3.7.0#5db7190830e41c9d5efbc4f99c83d04bace9c7d1"
+version = "3.7.1"
+source = "git+https://github.com/kennypassenier/chassis-rs?tag=v3.7.1#4f8374f57839360251e8d181df6346bc061a52da"
 dependencies = [
  "axum",
  "axum-extra",
@@ -1613,9 +1613,9 @@ dependencies = [
 
 [[package]]
 name = "rustls"
-version = "0.23.45"
+version = "0.23.46"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0d41d731c7d2f962d1ccc364cec258de3c0e93b38c2fb3ba97ac74513048d634"
+checksum = "48e13bd8c0e9365c43cfa5c9e8f9ad49d3c8444926c9aac819e0e4dc503c8fdf"
 dependencies = [
  "once_cell",
  "ring",
