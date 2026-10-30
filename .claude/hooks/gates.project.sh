@@ -18,8 +18,9 @@ set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 
 # The suite total, counted the way cargo counts it: one test attribute is one
-# test. Verified equal to `cargo test`'s own sum on 2026-09-09 (69).
-real=$(cat src/*.rs tests/*.rs | grep -c '^[[:space:]]*#\[test\]\|^[[:space:]]*#\[tokio::test\]')
+# test. Verified equal to `cargo test`'s own sum on 2026-09-09 (69). Counted
+# recursively since 2026-10-30: modules live in directories (src/config/).
+real=$(find src tests -name '*.rs' -print0 | xargs -0 cat | grep -c '^[[:space:]]*#\[test\]\|^[[:space:]]*#\[tokio::test\]')
 
 fail=0
 
