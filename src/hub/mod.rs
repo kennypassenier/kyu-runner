@@ -1,11 +1,23 @@
 //! The hub side of the pump: kyu's three verbs over plain HTTP
 //! (K2/K3 + W5 nack). Raw mode on purpose (AR4): the payload is the
 //! body, byte for byte; metadata rides in `kyu-*` headers.
+//!
+//! Layout: this file holds the types, the client and the settle and
+//! policy calls; `claim` holds the long-poll that claims a message.
+
+mod claim;
 
 use std::time::Duration;
 
 use reqwest::{Client, StatusCode, header, redirect};
 use thiserror::Error;
+
+/// Slack on top of the long-poll wait before the poll client gives up,
+/// so a hub answering at the very end of its wait is not cut off.
+const POLL_TIMEOUT_SLACK_S: u64 = 10;
+
+/// Longest slice of a hub error body that reaches a log line.
+const ERROR_BODY_LOG_CHARS: usize = 300;
 
 #[derive(Debug, Error)]
 pub enum HubError {
@@ -76,7 +88,7 @@ impl HubClient {
         // hub that answers 302 is malfunctioning either way, and saying
         // so out loud beats silently going somewhere else.
         let poll = Client::builder()
-            .timeout(Duration::from_secs(wait_s + 10))
+            .timeout(Duration::from_secs(wait_s + POLL_TIMEOUT_SLACK_S))
             .redirect(redirect::Policy::none())
             .build()?;
         let settle = Client::builder()
@@ -97,107 +109,6 @@ impl HubClient {
         match &self.token {
             Some(token) => request.bearer_auth(token),
             None => request,
-        }
-    }
-
-    pub async fn next(
-        &self,
-        topic: &str,
-        subscription: &str,
-        from_beginning: bool,
-    ) -> Result<PollOutcome, HubError> {
-        let mut url = format!(
-            "{}/t/{topic}/next?as={subscription}&wait={}",
-            self.base, self.wait_s
-        );
-        if from_beginning {
-            url.push_str("&from=beginning");
-        }
-        let response = self
-            .authed(self.poll.get(url))
-            .send()
-            .await
-            .map_err(|error| HubError::Unreachable(error.to_string()))?;
-
-        match response.status() {
-            StatusCode::NO_CONTENT => Ok(PollOutcome::Empty),
-            StatusCode::NOT_FOUND => Ok(PollOutcome::TopicUnborn),
-            StatusCode::UNAUTHORIZED => Err(HubError::Auth),
-            StatusCode::OK => {
-                let id = match response
-                    .headers()
-                    .get("kyu-id")
-                    .and_then(|value| value.to_str().ok())
-                {
-                    // Security F5: the id is interpolated into the
-                    // settle URL path; anything outside the plain
-                    // charset is a protocol violation, not a path.
-                    Some(id)
-                        if !id.is_empty()
-                            && id
-                                .chars()
-                                .all(|c| c.is_ascii_alphanumeric() || "._-".contains(c)) =>
-                    {
-                        id.to_string()
-                    }
-                    _ => return Err(HubError::Protocol("kyu-id")),
-                };
-                let content_type = response
-                    .headers()
-                    .get(header::CONTENT_TYPE)
-                    .and_then(|value| value.to_str().ok())
-                    .map(str::to_string);
-                let meta = response
-                    .headers()
-                    .iter()
-                    .filter(|(name, _)| {
-                        name.as_str().starts_with("kyu-") && name.as_str() != "kyu-notice"
-                    })
-                    .filter_map(|(name, value)| {
-                        value
-                            .to_str()
-                            .ok()
-                            .map(|value| (name.as_str().to_string(), value.to_string()))
-                    })
-                    .collect();
-                // Security F1: stream with a hard cap instead of
-                // buffering whatever the hub decides to send.
-                if let Some(length) = response.content_length()
-                    && length as usize > self.max_body_bytes
-                {
-                    return Ok(PollOutcome::Oversize {
-                        id,
-                        at_least: length as usize,
-                    });
-                }
-                let mut body = Vec::new();
-                let mut response = response;
-                loop {
-                    match response.chunk().await {
-                        Ok(Some(chunk)) => {
-                            if body.len() + chunk.len() > self.max_body_bytes {
-                                return Ok(PollOutcome::Oversize {
-                                    id,
-                                    at_least: body.len() + chunk.len(),
-                                });
-                            }
-                            body.extend_from_slice(&chunk);
-                        }
-                        Ok(None) => break,
-                        Err(error) => return Err(HubError::Unreachable(error.to_string())),
-                    }
-                }
-                Ok(PollOutcome::Message(Box::new(Claimed {
-                    id,
-                    body,
-                    content_type,
-                    meta,
-                })))
-            }
-            status => Err(HubError::Status {
-                status,
-                body: read_error_body(response).await,
-            }),
         }
     }
 
@@ -253,9 +164,12 @@ impl HubClient {
             .await
             .map_err(|error| HubError::Unreachable(error.to_string()))?;
         match response.status() {
-            status if status.is_success() => {
-                Ok(response.text().await.unwrap_or_else(|_| "{}".into()))
-            }
+            // The answer only feeds the startup log; an unreadable one
+            // says so there instead of passing for an empty policy.
+            status if status.is_success() => Ok(response
+                .text()
+                .await
+                .unwrap_or_else(|error| format!("(answer unreadable: {error})"))),
             StatusCode::UNAUTHORIZED => Err(HubError::Auth),
             status => Err(HubError::Status {
                 status,
@@ -270,7 +184,7 @@ async fn read_error_body(response: reqwest::Response) -> String {
         // Security F4: this string ends up in log lines — strip control
         // characters so a hostile hub cannot forge log entries or
         // inject terminal escapes via its error bodies.
-        Ok(text) if !text.is_empty() => printable(&text, 300),
+        Ok(text) if !text.is_empty() => printable(&text, ERROR_BODY_LOG_CHARS),
         _ => "(no body)".into(),
     }
 }
