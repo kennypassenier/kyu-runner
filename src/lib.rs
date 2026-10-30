@@ -4,5 +4,6 @@
 pub mod config;
 pub mod health;
 pub mod hub;
+pub mod pump;
 pub mod route;
 pub mod webhook;

@@ -5,32 +5,39 @@
 //!
 //! Built on chassis since 0.2.0: the kit owns the command line, the
 //! configuration layers, logging, `/healthz`, `/metrics`, the graceful
-//! shutdown and self-update. This file assembles the pump on top of it.
+//! shutdown and self-update. This file assembles the pump on top of it;
+//! the pump itself starts in `kyu_runner::pump`.
 
-use std::sync::Arc;
+use std::process::ExitCode;
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 use axum::Router;
 use chassis::{App, AppSpec};
-use kyu_runner::config;
+use kyu_runner::config::Config;
 use kyu_runner::health::{HealthState, RouteSubsystem};
-use kyu_runner::hub::HubClient;
-use kyu_runner::route::RouteRunner;
-use kyu_runner::webhook::WebhookClient;
+use kyu_runner::pump::spawn_pump;
 use tokio::sync::watch;
+use tokio::task::JoinHandle;
 
 /// The hub app token. Not a chassis knob on purpose: `KYU_RUNNER_TOKEN`
 /// is the kit's dashboard login token, a different secret, so the hub
 /// token moved to its own name with the migration (see CHANGELOG 0.2.0).
 const HUB_TOKEN_ENV: &str = "KYU_RUNNER_HUB_TOKEN";
 
+/// The hub itself sits on 8080 next to this pump (CT 109); the pump
+/// answers /healthz and /metrics on its own port.
+const DEFAULT_LISTEN: &str = "127.0.0.1:8082";
+
+/// The route tasks the pump started, drained at shutdown.
+type Tasks = Arc<Mutex<Vec<JoinHandle<()>>>>;
+
 #[tokio::main]
-async fn main() -> std::process::ExitCode {
+async fn main() -> ExitCode {
     let spec = AppSpec {
         name: "kyu-runner",
         version: env!("CARGO_PKG_VERSION"),
-        // The hub itself sits on 8080 next to this pump (CT 109); the
-        // pump answers /healthz and /metrics on its own port.
-        default_listen: "127.0.0.1:8082",
+        default_listen: DEFAULT_LISTEN,
         repository: Some("kennypassenier/kyu-runner"),
         ..Default::default()
     };
@@ -39,7 +46,7 @@ async fn main() -> std::process::ExitCode {
         Ok(app) => app,
         Err(e) => {
             eprintln!("{e}");
-            return std::process::ExitCode::FAILURE;
+            return ExitCode::FAILURE;
         }
     };
     // Only a real start and `--check` need the pump's own config (AR20);
@@ -49,22 +56,11 @@ async fn main() -> std::process::ExitCode {
     if !app.needs_project_config() {
         return app.run().await;
     }
-    // The pump's own config lives in the same TOML file as the kit's knobs;
-    // the kit hands over the half that is ours, with its own keys and
-    // sections removed, and the pump validates that with
-    // `deny_unknown_fields` intact.
-    let table = match app.project_table() {
-        Ok(table) => table,
-        Err(error) => {
-            eprintln!("{error}");
-            return std::process::ExitCode::FAILURE;
-        }
-    };
-    let config = match config::Config::from_project_table(&table) {
+    let config = match load_config(&app) {
         Ok(config) => config,
-        Err(error) => {
-            eprintln!("kyu-runner: {error}");
-            return std::process::ExitCode::FAILURE;
+        Err(message) => {
+            eprintln!("{message}");
+            return ExitCode::FAILURE;
         }
     };
     let routes = config.routes.len();
@@ -72,7 +68,24 @@ async fn main() -> std::process::ExitCode {
         println!("config OK: {routes} route(s)");
         Ok(())
     });
+    let health = register_health(&mut app, &config);
+    install_lifecycle(&mut app, Arc::new(config), health);
+    app.run().await
+}
 
+/// The pump's own config lives in the same TOML file as the kit's knobs;
+/// the kit hands over the half that is ours, with its own keys and
+/// sections removed, and the pump validates that with
+/// `deny_unknown_fields` intact. The error is the line to print.
+fn load_config(app: &App) -> Result<Config, String> {
+    let table = app.project_table().map_err(|error| error.to_string())?;
+    Config::from_project_table(&table).map_err(|error| format!("kyu-runner: {error}"))
+}
+
+/// One health subsystem per route, plus the two counter series (each
+/// its own scrape source, feat-metrics-1) appended to the kit's
+/// `/metrics`.
+fn register_health(app: &mut App, config: &Config) -> Arc<HealthState> {
     let health = Arc::new(HealthState::new(
         &app.spec.metric_prefix(),
         config.routes.iter().map(|route| route.name.clone()),
@@ -80,21 +93,19 @@ async fn main() -> std::process::ExitCode {
     for route in &config.routes {
         app.subsystem(RouteSubsystem::new(&route.name, Arc::clone(&health)));
     }
-    // Two series, each its own scrape source (feat-metrics-1); the kit
-    // renders them and appends them to its own `/metrics`.
     app.metrics_source(health.counters().delivered());
     app.metrics_source(health.counters().nacked());
+    health
+}
 
-    // The pump starts once the kit is listening (on_start) and stops in
-    // the kit's shutdown window (on_flush): in-flight deliveries finish,
-    // unacked ones redeliver from the hub (AR9/W1).
+/// The pump starts once the kit is listening (on_start) and stops in
+/// the kit's shutdown window (on_flush): in-flight deliveries finish,
+/// unacked ones redeliver from the hub (AR9/W1).
+fn install_lifecycle(app: &mut App, config: Arc<Config>, health: Arc<HealthState>) {
     let (stop_tx, stop_rx) = watch::channel(false);
-    let tasks: Arc<std::sync::Mutex<Vec<tokio::task::JoinHandle<()>>>> =
-        Arc::new(std::sync::Mutex::new(Vec::new()));
-    let config = Arc::new(config);
+    let tasks: Tasks = Arc::new(Mutex::new(Vec::new()));
+    let shutdown_grace = config.shutdown_grace();
     {
-        let config = Arc::clone(&config);
-        let health = Arc::clone(&health);
         let tasks = Arc::clone(&tasks);
         app.on_start(move || {
             // AR7: the hub token comes from the environment (systemd
@@ -110,107 +121,26 @@ async fn main() -> std::process::ExitCode {
             }
         });
     }
-    let shutdown_grace = config.shutdown_grace();
     app.on_flush(move || {
+        // A send error only means every route loop has already ended,
+        // which is the state this signal asks for.
         let _ = stop_tx.send(true);
-        let handles: Vec<_> = tasks.lock().expect("tasks lock").drain(..).collect();
-        let deadline = std::time::Instant::now() + shutdown_grace;
-        tokio::runtime::Handle::current().block_on(async move {
-            for mut task in handles {
-                let remaining = deadline.saturating_duration_since(std::time::Instant::now());
-                if tokio::time::timeout(remaining, &mut task).await.is_err() {
-                    task.abort();
-                }
-            }
-        });
+        drain_tasks(&tasks, shutdown_grace);
         tracing::info!("kyu-runner stopped");
     });
-    app.run().await
 }
 
-/// Build the clients and start one supervised loop per route.
-fn spawn_pump(
-    config: &config::Config,
-    token: Option<String>,
-    health: Arc<HealthState>,
-    stop_rx: watch::Receiver<bool>,
-) -> Result<Vec<tokio::task::JoinHandle<()>>, chassis::Error> {
-    let hub = Arc::new(
-        HubClient::new(
-            &config.hub_url,
-            token,
-            config.poll_wait(),
-            config.defaults.max_body_bytes,
-            config.tuning.settle_timeout(),
-        )
-        .map_err(|e| {
-            chassis::Error::config(
-                format!("cannot build the hub client: {e}"),
-                "check hub_url in the config file",
-            )
-        })?,
-    );
-    let webhook = Arc::new(WebhookClient::new().map_err(|e| {
-        chassis::Error::internal(
-            format!("cannot build the webhook client: {e}"),
-            "report this",
-        )
-    })?);
-    let mut tasks = Vec::new();
-    for route in &config.routes {
-        let runner = RouteRunner {
-            route: route.clone(),
-            hub: Arc::clone(&hub),
-            webhook: Arc::clone(&webhook),
-            webhook_timeout: config.webhook_timeout(route),
-            lease_budget: config.lease_budget(route),
-            policy_json: config::Config::policy_json(route),
-            health: Arc::clone(&health),
-            hub_backoff: config.tuning.hub_backoff(),
-            circuit_backoff: config.tuning.circuit_backoff(),
-            circuit_probe_timeout: config.tuning.circuit_probe_timeout(),
-            topic_unborn_poll: config.tuning.topic_unborn_poll(),
-        };
-        tasks.push(tokio::spawn(supervise(
-            runner,
-            stop_rx.clone(),
-            config.tuning.route_respawn(),
-        )));
-    }
-    tracing::info!(
-        version = env!("CARGO_PKG_VERSION"),
-        hub = %config.hub_url,
-        routes = config.routes.len(),
-        "kyu-runner pump started"
-    );
-    Ok(tasks)
-}
-
-/// AR1: a route task never takes the process down — a panic inside the
-/// loop is logged and the loop respawns after a pause. The unacked
-/// claim it may have held redelivers on its own (K5).
-async fn supervise(
-    runner: RouteRunner,
-    shutdown: watch::Receiver<bool>,
-    respawn_after: std::time::Duration,
-) {
-    loop {
-        let name = runner.route.name.clone();
-        let handle = tokio::spawn(runner.clone().run(shutdown.clone()));
-        match handle.await {
-            Ok(()) => return,
-            Err(error) => {
-                tracing::error!(
-                    route = %name, %error, respawn_after_ms = respawn_after.as_millis() as u64,
-                    "route loop died unexpectedly — respawning (AR1); an unacked claim \
-                     redelivers by itself (K5)"
-                );
-                runner.health.set(&name, "respawning");
-                if *shutdown.borrow() {
-                    return;
-                }
-                tokio::time::sleep(respawn_after).await;
+/// Wait for every route task until the shared deadline, aborting any
+/// task still running when it passes.
+fn drain_tasks(tasks: &Tasks, grace: Duration) {
+    let handles: Vec<_> = tasks.lock().expect("tasks lock").drain(..).collect();
+    let deadline = Instant::now() + grace;
+    tokio::runtime::Handle::current().block_on(async move {
+        for mut task in handles {
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            if tokio::time::timeout(remaining, &mut task).await.is_err() {
+                task.abort();
             }
         }
-    }
+    });
 }
