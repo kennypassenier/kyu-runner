@@ -27,7 +27,7 @@ src/health.rs    opt-in observation socket (W4/AR10 + W6): /healthz
                  accept backoff — F2)
 ```
 
-Tests: `tests/support/mod.rs` spawns a **real** hub (binary or docker
+Tests: `tests/support/` (hub.rs, hub_launch.rs) spawns a **real** hub (binary or docker
 image) and a fake HA webhook server; `tests/l1..l4_*.rs` are the E2E
 suites; unit tests live beside the pure code they exercise.
 
