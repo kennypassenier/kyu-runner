@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Source split into single-responsibility modules (engineering rules,
+  2026-10-30): `config/` (error, tuning, route, validate), `route/`
+  (loop, outcome, deliver, policy, backoff), `hub/claim.rs` and the new
+  library module `pump.rs`; `main.rs` is reduced to wiring. No file is
+  over 250 lines and long functions are split. Behaviour, configuration
+  and log lines are unchanged.
+- Integration tests split by theme (`l2_pump_*`, `l3_resilience_*`,
+  `l4_*`) and the test support into modules; the 69 tests are unchanged.
+- An unreadable hub answer to a policy write is now named in the log
+  instead of being shown as an empty policy.
+
 ## [2.0.0] - 2026-10-22
 
 ## [1.1.9] - 2026-10-18
