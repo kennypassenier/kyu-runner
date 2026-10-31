@@ -47,7 +47,7 @@ There is no GitHub Actions CI (removed 2026-09-29). Branch protection on
 removed CI produced, so pushes to `main` are refused until Kenny drops
 that requirement on GitHub (`chassis sync --protect` of 3.0.0 sets none).
 
-The hub suites (`l2_pump` and the other hub tests) start the newest signed
+The hub suites (`l2_pump_*` and the other hub tests) start the newest signed
 kyu release when `KYU_BIN` is unset: `~/Projects/workstation/bin/kyu-latest`
 downloads it, checks it against SHA256SUMS and the ecosystem minisign key,
 and caches it (Kenny, 2026-10-04: always the latest kyu, never a pin).
