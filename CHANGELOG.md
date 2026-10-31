@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [3.0.0] - 2026-10-31
+
 ### Changed
 
 - Source split into single-responsibility modules (engineering rules,
