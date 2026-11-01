@@ -35,6 +35,18 @@ in flight — that is what keeps a backlog draining in publish order.
 **Proven by:** `l4_k1_two_routes_run_independently_through_one_outage`,
 `l2_s2_ar15_an_outage_accumulates_unclaimed_and_drains_in_order`.
 
+**Where to see what a route does.** The runner has no screen of its own.
+What it forwarded, what waits, what is being retried and what
+dead-lettered is shown by kyu, on the topic's page under the route's
+subscription. That is why the subscription name says who consumes the
+topic: every route to Home Assistant uses `ha-runner`, so on kyu's page
+for `kyu.events` (or any other routed topic) the `ha-runner` row is this
+pump. Give a route a different subscription name only when a second
+consumer of the same kind needs its own copy of the messages, and make
+the name say which one (for example `ha-runner-garden`), never a bare
+`sub1`. The route `name` is the runner's own log and `/healthz` handle;
+kyu never sees it.
+
 ### K2 · Byte-for-byte forward
 
 The payload reaches HA exactly as it was published — bytes, not a

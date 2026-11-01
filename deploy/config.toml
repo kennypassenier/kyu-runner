@@ -40,6 +40,8 @@ hub_url = "http://127.0.0.1:8080"
 [[routes]]
 name = "kyu-events"
 topic = "kyu.events"
+# The name kyu shows on the topic page: it says who consumes the topic
+# (docs/USER_GUIDE.md, K1). Every Home Assistant route uses ha-runner.
 subscription = "ha-runner"
 webhook_url = "http://homeassistant.lan:8123/api/webhook/hub_kyu_events"
 
