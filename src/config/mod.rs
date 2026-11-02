@@ -90,7 +90,9 @@ impl Config {
             .map(|route| self.webhook_timeout(route).as_millis() as u64)
             .max()
             .unwrap_or(self.defaults.webhook_timeout_ms);
-        Duration::from_millis(max_timeout + self.tuning.settle_timeout_ms)
+        // An ack may take two settle calls and the pause between them.
+        let settle = 2 * self.tuning.settle_timeout_ms + SETTLE_RETRY_PAUSE.as_millis() as u64;
+        Duration::from_millis(max_timeout + settle)
     }
 
     /// The lease this route effectively runs under: its own

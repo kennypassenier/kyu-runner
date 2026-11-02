@@ -15,6 +15,12 @@ pub enum DeliveryError {
     ConnectClass(String),
     /// The target's HTTP stack answered, but not 2xx (3xx included).
     Status(StatusCode),
+    /// The connection was made but the request failed: a timeout while
+    /// waiting for the answer, or a broken body. The machine is up, so
+    /// this counts like a non-2xx answer and never opens the circuit:
+    /// its TCP probe would pass at once and the loop would burn an
+    /// attempt every cycle.
+    Failed(String),
 }
 
 impl std::fmt::Display for DeliveryError {
@@ -22,6 +28,7 @@ impl std::fmt::Display for DeliveryError {
         match self {
             Self::ConnectClass(reason) => write!(f, "target unreachable: {reason}"),
             Self::Status(status) => write!(f, "target answered {status}"),
+            Self::Failed(reason) => write!(f, "request failed: {reason}"),
         }
     }
 }
@@ -55,15 +62,25 @@ impl WebhookClient {
         for (name, value) in &message.meta {
             request = request.header(name, value);
         }
-        let response = request
-            .send()
-            .await
-            .map_err(|error| DeliveryError::ConnectClass(error.to_string()))?;
+        let response = request.send().await.map_err(classify)?;
         if response.status().is_success() {
             Ok(())
         } else {
             Err(DeliveryError::Status(response.status()))
         }
+    }
+}
+
+/// Only a failed connect means the target machine is down (AR15). The
+/// URL is dropped from the text: a Home Assistant webhook id in it is the
+/// whole credential, and the error reaches the logs.
+fn classify(error: reqwest::Error) -> DeliveryError {
+    let connect = error.is_connect();
+    let reason = error.without_url().to_string();
+    if connect {
+        DeliveryError::ConnectClass(reason)
+    } else {
+        DeliveryError::Failed(reason)
     }
 }
 

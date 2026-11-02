@@ -5,12 +5,13 @@ express, and what is not covered **by decision**. Maintained from here
 on; the AFK ratification round (PENDING_MINI_ROUNDS.md) may still move
 items between "covered" and "accepted".
 
-## The suites (69 tests)
+## The suites (71 tests)
 
 | Suite | Scope |
 |---|---|
 | `src/config.rs` unit tests (31) | K8 fail-closed validation, one test per rule, every rejection asserted to carry a remedy; AR5 lease-budget math; W3 policy JSON rendering; the shipped `deploy/config.toml` parses. |
 | `src/route.rs` unit tests (2) | AR6 backoff shape (doubling, cap, bounded jitter, reset). |
+| `src/hub` unit tests (2) | late-ack: the claim's numeric `kyu-attempt` rides on ack and nack; a missing or non-numeric one sends nothing. |
 | `tests/l0_skeleton.rs` (1) | The crate builds and the harness runs — the walking skeleton's only claim. |
 | `tests/l0_harness.rs` (2) | The harness's own port-reservation mechanism — a flaky harness is a broken gate. |
 | `tests/l1_check_config.rs` (6) | W2 at the binary boundary: exit codes, remedies, `--version`, and the no-network guarantee (a held listener proves `--check` never connects). |
@@ -72,7 +73,7 @@ store back (the same token is accepted again). The runner is never
 restarted, which is the property the test exists for.
 
 Proven by: the full suite green against a real kyu 3.0.0 binary and
-against the pinned v3.0.0 image, 69 tests, zero failures.
+against the pinned v3.0.0 image, the whole suite of that time (69) with zero failures.
 
 ## Why the kit's test harness is not used here (Kenny, 2026-09-09)
 
@@ -92,7 +93,7 @@ neither of the other two processes every E2E needs: a real kyu hub and the
 fake HA webhook server.
 
 Adopting it literally would delete the resilience suite and the log-hygiene
-assertions — 69 tests down to roughly 40, and precisely the tests that
+assertions — a suite of 69 at the time down to roughly 40, and precisely the tests that
 carry the hardest promises. The kit does not ask for it either: its
 MIGRATION.md lists kyu-runner under headless token management, and the
 harness advice under projects that have a dashboard.

@@ -75,7 +75,12 @@ impl RouteRunner {
         for attempt in 1..=SETTLE_ATTEMPTS {
             let result = self
                 .hub
-                .ack(&self.route.topic, &self.route.subscription, &message.id)
+                .ack(
+                    &self.route.topic,
+                    &self.route.subscription,
+                    &message.id,
+                    message.attempt(),
+                )
                 .await;
             match result {
                 Ok(()) => {
@@ -100,11 +105,11 @@ impl RouteRunner {
         }
     }
 
-    pub(super) async fn settle_nack(&self, name: &str, id: &str) {
+    pub(super) async fn settle_nack(&self, name: &str, id: &str, attempt: Option<&str>) {
         self.health.count_nacked(name);
         if let Err(error) = self
             .hub
-            .nack(&self.route.topic, &self.route.subscription, id)
+            .nack(&self.route.topic, &self.route.subscription, id, attempt)
             .await
         {
             debug!(

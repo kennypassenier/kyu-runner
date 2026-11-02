@@ -88,7 +88,7 @@ impl RouteRunner {
             "message larger than max_body_bytes — nacked without delivery; it will dead-letter \
              visibly when its attempts run out (security F1)"
         );
-        self.settle_nack(name, id).await;
+        self.settle_nack(name, id, None).await;
     }
 
     pub(super) async fn on_message(
@@ -111,11 +111,11 @@ impl RouteRunner {
                 Flow::Continue
             }
             DeliverEnd::Shutdown => {
-                self.settle_nack(name, &message.id).await;
+                self.settle_nack(name, &message.id, message.attempt()).await;
                 Flow::Stop
             }
             DeliverEnd::GiveUp { connect_class } => {
-                self.settle_nack(name, &message.id).await;
+                self.settle_nack(name, &message.id, message.attempt()).await;
                 if !connect_class {
                     return Flow::Continue;
                 }

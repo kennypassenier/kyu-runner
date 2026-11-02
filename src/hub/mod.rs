@@ -26,8 +26,8 @@ pub enum HubError {
 
     #[error(
         "hub denied the request (401): the token is missing, wrong or revoked. Remedy: mint an \
-         app token for \"kyu-runner\" on the hub's /apps page and set KYU_RUNNER_TOKEN in the \
-         unit's EnvironmentFile."
+         app token for \"kyu-runner\" on the hub's /apps page and set KYU_RUNNER_HUB_TOKEN in \
+         the unit's EnvironmentFile."
     )]
     Auth,
 
@@ -45,6 +45,19 @@ pub struct Claimed {
     pub content_type: Option<String>,
     /// The `kyu-*` metadata headers, passed through to HA (K2).
     pub meta: Vec<(String, String)>,
+}
+
+impl Claimed {
+    /// The hub's attempt number for this claim (`kyu-attempt`). Sent back
+    /// on ack and nack, so a settle that arrives after the lease passed to
+    /// another poll is refused (409) instead of settling that poll's try.
+    pub fn attempt(&self) -> Option<&str> {
+        self.meta
+            .iter()
+            .find(|(name, _)| name == "kyu-attempt")
+            .map(|(_, value)| value.as_str())
+            .filter(|value| !value.is_empty() && value.bytes().all(|b| b.is_ascii_digit()))
+    }
 }
 
 pub enum PollOutcome {
@@ -112,12 +125,26 @@ impl HubClient {
         }
     }
 
-    pub async fn ack(&self, topic: &str, subscription: &str, id: &str) -> Result<(), HubError> {
-        self.settle_call("ack", topic, subscription, id, "").await
+    pub async fn ack(
+        &self,
+        topic: &str,
+        subscription: &str,
+        id: &str,
+        attempt: Option<&str>,
+    ) -> Result<(), HubError> {
+        self.settle_call("ack", topic, subscription, id, &attempt_query(attempt))
+            .await
     }
 
-    pub async fn nack(&self, topic: &str, subscription: &str, id: &str) -> Result<(), HubError> {
-        self.settle_call("nack", topic, subscription, id, "").await
+    pub async fn nack(
+        &self,
+        topic: &str,
+        subscription: &str,
+        id: &str,
+        attempt: Option<&str>,
+    ) -> Result<(), HubError> {
+        self.settle_call("nack", topic, subscription, id, &attempt_query(attempt))
+            .await
     }
 
     async fn settle_call(
@@ -193,4 +220,42 @@ async fn read_error_body(response: reqwest::Response) -> String {
 /// dropped, length bounded.
 pub fn printable(text: &str, max: usize) -> String {
     text.chars().filter(|c| !c.is_control()).take(max).collect()
+}
+
+/// `&attempt=N` when the claim carried one; hubs before kyu's late-ack
+/// check ignore the parameter, so it is always safe to send.
+fn attempt_query(attempt: Option<&str>) -> String {
+    attempt.map(|n| format!("&attempt={n}")).unwrap_or_default()
+}
+
+#[cfg(test)]
+mod attempt_tests {
+    use super::{Claimed, attempt_query};
+
+    fn claimed(meta: &[(&str, &str)]) -> Claimed {
+        Claimed {
+            id: "01ABC".into(),
+            body: Vec::new(),
+            content_type: None,
+            meta: meta
+                .iter()
+                .map(|(n, v)| (n.to_string(), v.to_string()))
+                .collect(),
+        }
+    }
+
+    #[test]
+    fn late_ack_the_claims_attempt_rides_on_ack_and_nack() {
+        let message = claimed(&[("kyu-topic", "t"), ("kyu-attempt", "3")]);
+        assert_eq!(attempt_query(message.attempt()), "&attempt=3");
+    }
+
+    #[test]
+    fn late_ack_a_missing_or_odd_attempt_sends_nothing() {
+        assert_eq!(attempt_query(claimed(&[]).attempt()), "");
+        assert_eq!(
+            attempt_query(claimed(&[("kyu-attempt", "3&x=1")]).attempt()),
+            ""
+        );
+    }
 }

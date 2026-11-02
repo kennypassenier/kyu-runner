@@ -44,7 +44,7 @@ fn l1_ar9_the_shutdown_grace_is_derived_from_the_largest_timeout() {
          webhook_url = \"http://ha.lan:8123/api/webhook/slow\"\n"
     );
     let config = parse(&text).expect("valid config");
-    assert_eq!(config.shutdown_grace(), Duration::from_millis(17_000));
+    assert_eq!(config.shutdown_grace(), Duration::from_millis(23_000));
 }
 
 #[test]

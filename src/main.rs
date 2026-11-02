@@ -113,6 +113,13 @@ fn install_lifecycle(app: &mut App, config: Arc<Config>, health: Arc<HealthState
             let token = std::env::var(HUB_TOKEN_ENV)
                 .ok()
                 .filter(|token| !token.is_empty());
+            if token.is_none() {
+                tracing::warn!(
+                    "{HUB_TOKEN_ENV} is not set: every route will be denied by the hub (401). \
+                     Mint an app token for \"kyu-runner\" on the hub's /apps page and set it in \
+                     the unit's EnvironmentFile"
+                );
+            }
             match spawn_pump(&config, token, health, stop_rx) {
                 Ok(spawned) => tasks.lock().expect("tasks lock").extend(spawned),
                 Err(e) => {
