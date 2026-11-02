@@ -1,6 +1,7 @@
 # Build output
 /target/
 /target-musl/
+/.chassis/
 
 # Local secrets and scratch — never committed (standing rule 10)
 .env
