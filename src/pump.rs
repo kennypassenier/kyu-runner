@@ -75,7 +75,7 @@ fn build_clients(
             "check hub_url in the config file",
         )
     })?;
-    let webhook = WebhookClient::new().map_err(|e| {
+    let webhook = WebhookClient::new(config.tuning.circuit_probe_timeout()).map_err(|e| {
         chassis::Error::internal(
             format!("cannot build the webhook client: {e}"),
             "report this",

@@ -55,6 +55,7 @@ impl HubClient {
             return Ok(PollOutcome::Oversize {
                 id,
                 at_least: length as usize,
+                attempt: attempt_of(&meta),
             });
         }
         let mut body = Vec::new();
@@ -67,6 +68,7 @@ impl HubClient {
                 return Ok(PollOutcome::Oversize {
                     id,
                     at_least: body.len() + chunk.len(),
+                    attempt: attempt_of(&meta),
                 });
             }
             body.extend_from_slice(&chunk);
@@ -114,4 +116,8 @@ fn kyu_meta(response: &Response) -> Vec<(String, String)> {
                 .map(|value| (name.as_str().to_string(), value.to_string()))
         })
         .collect()
+}
+
+fn attempt_of(meta: &[(String, String)]) -> Option<String> {
+    super::attempt_in(meta).map(str::to_owned)
 }

@@ -80,6 +80,7 @@ impl RouteRunner {
         name: &str,
         id: &str,
         at_least: usize,
+        attempt: Option<&str>,
         state: &mut LoopState,
     ) {
         state.note_recovery(name);
@@ -88,7 +89,7 @@ impl RouteRunner {
             "message larger than max_body_bytes — nacked without delivery; it will dead-letter \
              visibly when its attempts run out (security F1)"
         );
-        self.settle_nack(name, id, None).await;
+        self.settle_nack(name, id, attempt).await;
     }
 
     pub(super) async fn on_message(

@@ -35,7 +35,7 @@ async fn l3_w1_sigterm_mid_delivery_finishes_the_message_and_exits_zero() {
     runner.sigterm();
 
     // AR9: the in-flight delivery (2 s left) plus the ack fit inside
-    // the derived grace (webhook timeout 3 s + 5 s margin).
+    // the derived grace (webhook timeout 3 s + 2 × 5 s settle + 1 s pause).
     let status = runner
         .wait_exit(Duration::from_secs(15))
         .expect("the runner exits within the grace");
@@ -137,7 +137,7 @@ async fn l3_ar9_shutdown_never_outlasts_the_derived_grace() {
     ack(&hub, topic, "ha-runner", &setup_id).await;
     put_policy(&hub, topic, "ha-runner", r#"{"lease_ms":30000}"#).await;
 
-    // Grace = webhook timeout (8 s) + settle margin (5 s) = 13 s.
+    // Grace = webhook timeout (8 s) + 2 × settle (5 s) + pause (1 s) = 19 s.
     let config = route_config(&hub, "grace", topic, &ha.url("/api/webhook/x")).replace(
         "webhook_url =",
         "webhook_timeout_ms = 8000\npolicy = { lease_ms = 30000 }\nwebhook_url =",
@@ -155,12 +155,12 @@ async fn l3_ar9_shutdown_never_outlasts_the_derived_grace() {
     let asked = std::time::Instant::now();
     runner.sigterm();
     let status = runner
-        .wait_exit(Duration::from_secs(25))
+        .wait_exit(Duration::from_secs(30))
         .expect("the runner must exit, stuck delivery or not");
     let took = asked.elapsed();
     assert!(
-        took < Duration::from_secs(22),
-        "shutdown took {took:?}, beyond the 13 s grace plus the kit's slack"
+        took < Duration::from_secs(26),
+        "shutdown took {took:?}, beyond the 19 s grace plus the kit's slack"
     );
     assert!(
         status.success(),

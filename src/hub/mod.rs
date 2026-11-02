@@ -52,11 +52,7 @@ impl Claimed {
     /// on ack and nack, so a settle that arrives after the lease passed to
     /// another poll is refused (409) instead of settling that poll's try.
     pub fn attempt(&self) -> Option<&str> {
-        self.meta
-            .iter()
-            .find(|(name, _)| name == "kyu-attempt")
-            .map(|(_, value)| value.as_str())
-            .filter(|value| !value.is_empty() && value.bytes().all(|b| b.is_ascii_digit()))
+        attempt_in(&self.meta)
     }
 }
 
@@ -72,6 +68,8 @@ pub enum PollOutcome {
     Oversize {
         id: String,
         at_least: usize,
+        /// The claim's `kyu-attempt`, sent back with the nack (late-ack).
+        attempt: Option<String>,
     },
 }
 
@@ -220,6 +218,14 @@ async fn read_error_body(response: reqwest::Response) -> String {
 /// dropped, length bounded.
 pub fn printable(text: &str, max: usize) -> String {
     text.chars().filter(|c| !c.is_control()).take(max).collect()
+}
+
+/// The numeric `kyu-attempt` among a claim's metadata headers.
+pub(crate) fn attempt_in(meta: &[(String, String)]) -> Option<&str> {
+    meta.iter()
+        .find(|(name, _)| name == "kyu-attempt")
+        .map(|(_, value)| value.as_str())
+        .filter(|value| !value.is_empty() && value.bytes().all(|b| b.is_ascii_digit()))
 }
 
 /// `&attempt=N` when the claim carried one; hubs before kyu's late-ack

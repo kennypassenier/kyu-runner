@@ -82,7 +82,8 @@ impl Config {
     }
 
     /// AR9: derived, not configured — the longest webhook timeout plus
-    /// the settle margin, so an in-flight delivery always fits.
+    /// an ack's two settle calls and the pause between them, so an
+    /// in-flight delivery and its ack always fit.
     pub fn shutdown_grace(&self) -> Duration {
         let max_timeout = self
             .routes

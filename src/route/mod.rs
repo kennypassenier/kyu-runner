@@ -125,8 +125,13 @@ impl RouteRunner {
                     self.on_empty(&name, &mut state).await;
                     Flow::Continue
                 }
-                Ok(PollOutcome::Oversize { id, at_least }) => {
-                    self.on_oversize(&name, &id, at_least, &mut state).await;
+                Ok(PollOutcome::Oversize {
+                    id,
+                    at_least,
+                    attempt,
+                }) => {
+                    self.on_oversize(&name, &id, at_least, attempt.as_deref(), &mut state)
+                        .await;
                     Flow::Continue
                 }
                 Ok(PollOutcome::Message(message)) => {

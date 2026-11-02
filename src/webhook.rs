@@ -38,9 +38,14 @@ pub struct WebhookClient {
 }
 
 impl WebhookClient {
-    pub fn new() -> anyhow::Result<Self> {
+    /// `connect_timeout` bounds the TCP connect on its own, the same span
+    /// the circuit probe waits: a host that never answers the SYN then
+    /// fails as a connect error and opens the circuit, rather than
+    /// running into the whole-request timeout and counting as `Failed`.
+    pub fn new(connect_timeout: Duration) -> anyhow::Result<Self> {
         let http = Client::builder()
             .redirect(redirect::Policy::none())
+            .connect_timeout(connect_timeout)
             .build()?;
         Ok(Self { http })
     }

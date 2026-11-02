@@ -168,7 +168,8 @@ Phases 3-4 output. T = tech choice, AR = architecture.
 - **AR9 · Shutdown (W1).** SIGTERM/SIGINT → stop claiming, in-flight
   delivery gets a bounded grace, settle, exit 0. The grace is
   **derived**, not configured: max over routes of `webhook_timeout` +
-  5 s settle margin. ⚔ *Critic (adopted):* a fixed 10 s grace equal to
+  5 s settle margin (amended 2026-11-02: two settle calls plus the 1 s
+  retry pause, since an ack retries once). ⚔ *Critic (adopted):* a fixed 10 s grace equal to
   the webhook timeout produced on every deploy exactly the duplicate
   W1 exists to avoid. A second signal exits immediately — an
   interrupted delivery is safe by K5.
