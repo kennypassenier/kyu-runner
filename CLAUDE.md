@@ -20,7 +20,7 @@ gates hold from any session or terminal. After a fresh clone, run:
 | Current phase | all 11 phases done; **1.0.1** (chassis 2.2.1) tagged and built 2026-09-27, **not signed yet** and not `latest` (fix-10). CT 109 still runs **1.0.0** (`/healthz`), with 0.2.3 kept as `kyu-runner.prev`; `/usr/local/bin/kyu-runner` is a symlink to the unit's binary |
 | Last completed gate | Kenny's form of 2026-09-26: `release` = release and roll out, `stray` = replace the old 0.1.0 with a link. Both done the same evening |
 | Next gate | Signing, done for all four chassis projects at once from a separate thread (Kenny, 2026-09-27). `chassis release 1.0.1` stopped at `scripts/sign-release.sh v1.0.1` (minisign password). v1.0.0 stays unsigned on purpose: 1.0.1 supersedes it |
-| Next action | waiting on chassis-rs: its release on kp-themes 11.0.0 (owned by the chassis-rs thread, 2026-10-19). Then bump chassis here, build, and hand Kenny one `sign-releases` command. kyu-runner has no UI (chassis `core` + `self-update` only), so no kp-themes component work. Before: v1.0.1 signed 2026-09-27 and live on CT 109 |
+| Next action | waiting on Kenny: the release go (Kenny 2026-11-01: kp-themes, then chassis-rs, then every app, then release). main (f8a7163, not pushed) is on chassis-rs v4.4.0 / kp-themes 12.2.0 with the 2026-11-02 review fixes and the late-ack attempt on ack/nack; the full suite runs at that release. |
 | AFK mode | off |
 
 The AFK build's queue in `docs/PENDING_MINI_ROUNDS.md` is now fully
