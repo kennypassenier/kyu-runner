@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Changed
+
+- chassis-rs 4.5.0 (kp-themes 12.3.0): the kit keeps its own state in its
+  database instead of JSON files.
+
 ## [3.1.0] - 2026-11-03
 
 ### Changed
