@@ -2,6 +2,25 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Only a failed connect opens a route's circuit; the webhook client bounds
+  the connect with `circuit_probe_timeout`, so an unreachable host still
+  opens it, while a Home Assistant that accepts and then hangs counts as a
+  failed delivery instead of burning one hub attempt per circuit cycle.
+- Ack and nack send the claim's `kyu-attempt`, so kyu 7 can refuse a late
+  settle; older hubs ignore it.
+- The shutdown grace covers an ack's two settle calls and the pause between
+  them.
+- chassis-rs 4.4.0.
+
+### Fixed
+
+- Webhook errors no longer carry the URL into the log (the webhook id in it
+  is the whole credential).
+- The 401 remedy names `KYU_RUNNER_HUB_TOKEN`; a missing hub token is warned
+  about at start.
+
 ## [3.0.0] - 2026-10-31
 
 ### Changed
