@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [3.1.0] - 2026-11-03
+
 ### Changed
 
 - Only a failed connect opens a route's circuit; the webhook client bounds
