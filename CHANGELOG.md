@@ -4,6 +4,12 @@
 
 ### Changed
 
+- Built on chassis-rs 4.8.0 (kp-themes 12.7.0).
+- `.chassis.toml` lists `KYU_RUNNER_HUB_TOKEN` in `env_names`, so
+  `chassis sync` keeps it in `deploy/compose.example.yml`.
+
+### Changed
+
 - chassis-rs 4.5.0 (kp-themes 12.3.0): the kit keeps its own state in its
   database instead of JSON files.
 
