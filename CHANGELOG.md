@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [3.2.0] - 2026-11-04
+
 ### Changed
 
 - Built on chassis-rs 4.8.0 (kp-themes 12.7.0).
