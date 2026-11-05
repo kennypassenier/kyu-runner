@@ -13,7 +13,7 @@ where to look next. Written in Phase 8 from the code as built.
    subscriptions with their backlogs, dead letters (payload +
    Requeue), and policy values. The hub knows more state than the
    runner does — the runner deliberately holds none.
-3. **`/healthz`** (if `healthz_listen` is configured): per route one
+3. **`/healthz`** (on `KYU_RUNNER_LISTEN`, default `127.0.0.1:8082`): per route one
    of `starting · idle · delivering · topic-unborn · hub-down ·
    auth-denied · circuit-open · respawning · stopped`.
 

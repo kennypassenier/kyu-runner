@@ -3,7 +3,7 @@
 # is just a copy — check drift with:
 #   diff deploy/config.toml /etc/kyu-runner/config.toml
 #
-# The app token is NOT here: it lives in /etc/kyu-runner/kyu-runner.env
+# The app token is NOT here: it lives in /appdata/kyu/kyu-runner-config/token.env
 # (KYU_RUNNER_HUB_TOKEN=…), root-owned 0600, loaded by the systemd unit.
 # This file is committed; a token in it would be a token in git.
 

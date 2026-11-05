@@ -1,10 +1,11 @@
 # Operations runbook — kyu-runner
 
 Numbered procedures. Written at L5, re-validated in Phase 8. The
-deployment target is **an LXC on the Proxmox host — which one is
-Kenny's still-open call** (`<target-lxc>` below). The kyu hub runs on
-LXC 109 (`10.10.10.9`) as a native binary under systemd; the runner
-follows the same pattern, wherever it lands.
+runner runs on LXC 109 (`10.10.10.9`, `<target-lxc>` below), beside the
+kyu hub, as a native binary under systemd. The homelab stack that owns it
+is `stacks/kyu` (`kyu-runner/service.yml`: binary
+`/opt/kyu-runner/bin/kyu-runner`, state and token in
+`/appdata/kyu/kyu-runner-config`, nightly `update_cmd`).
 
 Reality checks baked into these procedures (from the Phase 4 critic):
 
@@ -26,8 +27,7 @@ Reality checks baked into these procedures (from the Phase 4 critic):
 
 ## 1 · Install on the target LXC
 
-> Which LXC is deliberately still Kenny's call (ratification form 2);
-> the procedure below is LXC-agnostic and was drilled end-to-end on a
+> The procedure below is LXC-agnostic and was drilled end-to-end on a
 > scratch LXC (191) on 2026-08-30. Drill finding: the debian-13
 > template ships **without curl** — the read-back steps below show the
 > python3 alternative that is always present:
@@ -68,8 +68,9 @@ Reality checks baked into these procedures (from the Phase 4 critic):
    Either way, write it on the target LXC (the `read -rs` keeps the token
    out of the shell history — standing rule 10):
    ```
-   install -m 600 /dev/null /etc/kyu-runner/kyu-runner.env
-   read -rs TOKEN && printf 'KYU_RUNNER_HUB_TOKEN=%s\n' "$TOKEN" > /etc/kyu-runner/kyu-runner.env && unset TOKEN
+   install -d -o kyu-runner -g kyu-runner /appdata/kyu/kyu-runner-config
+   install -m 600 /dev/null /appdata/kyu/kyu-runner-config/token.env
+   read -rs TOKEN && printf 'KYU_RUNNER_HUB_TOKEN=%s\n' "$TOKEN" > /appdata/kyu/kyu-runner-config/token.env && unset TOKEN
    ```
 5. Config: `mkdir -p /etc/kyu-runner` and copy `deploy/config.toml`
    to `/etc/kyu-runner/config.toml`. Verify:
@@ -100,6 +101,9 @@ Reality checks baked into these procedures (from the Phase 4 critic):
 
 The runner's full state is: the binary (releases), the config + unit
 (this repo), and the token (re-mintable). Nothing else exists.
+There is no secret key to lose: the runner is built without the kit's
+`dashboard` feature and does not read `KYU_RUNNER_SECRET_KEY` (`docs/KIT.md`).
+The one credential is the hub token in `token.env`, re-minted in step 3.
 
 1. Install the binary (install steps 1-2).
 2. Copy `deploy/config.toml` and `deploy/kyu-runner.service` from this
@@ -119,11 +123,12 @@ The runner's full state is: the binary (releases), the config + unit
 1. **Uptime Kuma → hub:** add an HTTP(s) monitor on
    `http://10.10.10.9:8080/healthz`, expect 200. The endpoint stays
    open on a token-protected hub.
-2. **Uptime Kuma → runner (optional, W4):** uncomment
-   `healthz_listen` in the config — bind the address Kuma actually
-   probes (`<target-lxc>:8081`), or leave it commented out when unused:
-   any LAN device can reach an open listener, and less surface is less
-   surface. Restart, add a monitor on `http://<target-lxc>:8081/healthz`.
+2. **Uptime Kuma → runner (optional, W4):** the kit's listener binds
+   `127.0.0.1:8082` by default (`DEFAULT_LISTEN` in `src/main.rs`). Set
+   `KYU_RUNNER_LISTEN` to the address Kuma actually probes (the live unit
+   sets `10.10.10.9:8082`) or leave it at the default when unused: any LAN
+   device can reach an open listener, and less surface is less surface.
+   Restart, add a monitor on `http://<target-lxc>:8082/healthz`.
    Without it, a dead runner still surfaces via the hub's
    idle-subscription flag and the `kyu.events` route.
 3. **Grafana → sweeper alert:** the hub's `/metrics` exposes
